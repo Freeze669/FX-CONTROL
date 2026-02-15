@@ -433,12 +433,24 @@ Promise.all(decodes).finally(()=>{
   // hide raw loading and show server select UI after brief delay
   setTimeout(()=>{
     hideLoading();
-    const sel = document.getElementById('server-select'); if(sel) sel.classList.remove('hidden');
+    const sel = document.getElementById('server-select'); 
+    if(sel) {
+      sel.classList.remove('hidden');
+      // Attach event listeners when server select is shown
+      attachServerButtonListeners();
+    }
   }, 300);
 });
-// Safety: if something blocks, forcibly hide loading and start loop after 5s
 // Safety: if something blocks, forcibly hide loading and show server select after 5s
-setTimeout(()=>{ hideLoading(); const sel = document.getElementById('server-select'); if(sel) sel.classList.remove('hidden'); }, 5000);
+setTimeout(()=>{ 
+  hideLoading(); 
+  const sel = document.getElementById('server-select'); 
+  if(sel) {
+    sel.classList.remove('hidden');
+    // Attach event listeners when server select is shown
+    attachServerButtonListeners();
+  }
+}, 5000);
 
 // wire server selection buttons to actually start the game
 function launchServer(name){ 
@@ -451,24 +463,47 @@ function launchServer(name){
   startMainLoop(); 
 }
 
-// Attach event listeners to server buttons - try both DOMContentLoaded and immediate execution
+// Attach event listeners to server buttons
 function attachServerButtonListeners(){
   const buttons = document.querySelectorAll('.server-btn-primary, .server-btn'); 
   buttons.forEach(b=> {
-    b.addEventListener('click', (e)=>{
+    // Remove any existing listeners first by cloning
+    const newB = b.cloneNode(true);
+    b.parentNode.replaceChild(newB, b);
+    // Add click listener
+    newB.addEventListener('click', (e)=>{
       e.preventDefault();
       e.stopPropagation();
-      const s = b.dataset.server||'fx-control'; 
+      const s = newB.dataset.server||'fx-control'; 
       launchServer(s); 
     });
   });
+  
+  // Also use event delegation as a fallback (more reliable)
+  const serverSelect = document.getElementById('server-select');
+  if(serverSelect && !serverSelect.hasAttribute('data-delegated')){
+    serverSelect.setAttribute('data-delegated', 'true');
+    serverSelect.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.server-btn-primary, .server-btn');
+      if(btn){
+        e.preventDefault();
+        e.stopPropagation();
+        const s = btn.dataset.server||'fx-control';
+        launchServer(s);
+      }
+    });
+  }
 }
 
 // Try to attach listeners immediately (if DOM is ready) or wait for DOMContentLoaded
 if(document.readyState === 'loading'){
-  window.addEventListener('DOMContentLoaded', attachServerButtonListeners);
+  window.addEventListener('DOMContentLoaded', ()=>{
+    attachServerButtonListeners();
+  });
 } else {
-  attachServerButtonListeners();
+  // DOM is already ready, but buttons might not be visible yet
+  // Will be attached when server-select is shown
+  setTimeout(attachServerButtonListeners, 100);
 }
 
 // pan / click handling (mouse)
