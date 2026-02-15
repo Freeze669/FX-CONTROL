@@ -460,15 +460,6 @@ window.launchServer = function launchServer(name){
   startMainLoop(); 
 };
 
-// Simple event delegation - works reliably on GitHub Pages
-document.addEventListener('click', function(e){
-  const btn = e.target.closest('.server-btn-primary, .server-btn');
-  if(btn){
-    e.preventDefault();
-    const s = btn.dataset.server || 'fx-control';
-    launchServer(s);
-  }
-});
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
