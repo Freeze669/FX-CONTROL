@@ -65,9 +65,17 @@
 
   <script src="js/app.js"></script>
   <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch(()=>{});
-    }
+    // On page load, try to unregister any old service workers and clear caches
+    // This helps when GitHub Pages previously served a cached SW that held old files.
+    (function purgeOldSW(){
+      if(!('serviceWorker' in navigator)) return;
+      try{
+        navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+        if(window.caches && caches.keys){ caches.keys().then(keys=>keys.forEach(k=>caches.delete(k))).catch(()=>{}); }
+      }catch(e){}
+      // register the (new) service worker after a short delay so purge can complete
+      setTimeout(()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); }, 400);
+    })();
   </script>
 </body>
 </html>
