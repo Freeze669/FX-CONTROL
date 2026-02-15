@@ -5,6 +5,7 @@ const ctx = canvas.getContext('2d');
 const cam = {x:0,y:0,zoom:1};
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
+let _miniatc_loop_started = false;
 function resize(){
   const dpr = window.devicePixelRatio || 1;
   W = canvas.clientWidth = canvas.offsetWidth;
@@ -181,6 +182,9 @@ for(let i=0;i<6;i++) spawnPlane('civil');
 setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<8) spawnPlane('civil'); }, 1800);
 setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('enemy'); }, 6500);
 
+// ensure the main loop starts immediately (don't wait for image.decode)
+if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; }
+
 // UI and interaction
 const info = document.getElementById('info');
 const controls = document.getElementById('controls');
@@ -245,7 +249,6 @@ const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventLis
 function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
 // Ensure promises are real promises (some browsers may not implement decode)
 const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
-let _miniatc_loop_started = false;
 Promise.all(decodes).finally(()=>{
   setTimeout(hideLoading, 300);
   if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; }
