@@ -22,10 +22,11 @@ function showNotification(message, type='info', duration=5000){
   }, duration);
 }
 // camera for pan (world coordinates) - declared early so resize() can use it
-const cam = {x:0,y:0,zoom:0.6}; // Reduced zoom for larger map view
+const cam = {x:0,y:0,zoom:0.4}; // Larger zoom for bigger map view
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
 let _miniatc_loop_started = false;
+let controlledPlane = null; // Currently manually controlled plane
 function startMainLoop(){ if(!_miniatc_loop_started){ _miniatc_loop_started = true; try{ setStatus('Démarrage boucle'); hideLoading(); requestAnimationFrame(loop); setStatus(''); }catch(e){ console.error(e); setStatus('Erreur au démarrage: '+(e.message||e)); } } }
 function resize(){
   const dpr = window.devicePixelRatio || 1;
@@ -91,14 +92,41 @@ const imgWorldMap = new Image(); imgWorldMap.src = svgWorld;
 
 function spawnPlane(type='civil', x=null, y=null, hdg=null){
   const angle = rand(0,Math.PI*2);
-  const r = Math.max(W,H)/1.5 + 120; // Larger spawn radius for bigger map
+  const r = Math.max(W,H)/1.2 + 200; // Even larger spawn radius for bigger map
   const px = x!==null? x : cx + Math.cos(angle)*r;
   const py = y!==null? y : cy + Math.sin(angle)*r;
   const phd = hdg!==null? hdg : ((angle + Math.PI) % (Math.PI*2));
   const base = {id:Date.now().toString(36)+Math.floor(Math.random()*1000),call:callsign(),x:px,y:py,hdg:phd,spd:rand(80,220),alt:rand(2000,36000),selected:false,type:type};
+  
+  // Find nearest airport for origin
+  let nearestOrigin = null; let dminOrigin = Infinity;
+  for(let a of airports){ const d = Math.hypot(a.x-px, a.y-py); if(d<dminOrigin){ dminOrigin=d; nearestOrigin=a; } }
+  base.origin = nearestOrigin ? nearestOrigin.name : 'Inconnu';
+  
+  // Pick random destination airport
+  if(airports.length > 0){
+    const destIndex = Math.floor(Math.random() * airports.length);
+    base.destination = airports[destIndex].name;
+  } else {
+    base.destination = 'Inconnu';
+  }
+  
   // assign model and tweak speeds
-  if(type==='fighter'){ base.spd = 380; base.targetId = null; base.model = 'F-16'; base.img = svgFighter; }
-  else if(type==='enemy'){ base.spd = rand(160,300); base.model = 'Unknown'; base.img = svgEnemy; }
+  if(type==='fighter'){ 
+    base.spd = 380; 
+    base.targetId = null; 
+    base.model = 'F-16'; 
+    base.img = svgFighter;
+    base.origin = 'Base Militaire';
+    base.destination = 'Patrouille';
+  }
+  else if(type==='enemy'){ 
+    base.spd = rand(160,300); 
+    base.model = 'Unknown'; 
+    base.img = svgEnemy;
+    base.origin = 'Inconnu';
+    base.destination = 'Inconnu';
+  }
   else if(type==='cargo' || type==='transport'){ 
     base.spd = rand(140,200); // Cargo planes are slower
     base.alt = rand(18000,30000); // Usually fly lower
@@ -222,12 +250,20 @@ function update(dt){
       }
     } else {
       // normal movement for civil/enemy
-      // if returning to airport, steer to nearest airport
-      if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
-      const speed = (p.spd*(dt/1000)/2.5) || 0;
-      p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      // If plane is manually controlled, movement is handled by control buttons
+      if(p._manuallyControlled && controlledPlane === p.id){
+        // Manual control - just update position based on current heading and speed
+        const speed = (p.spd*(dt/1000)/2.5) || 0;
+        p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      } else {
+        // Automatic movement
+        // if returning to airport, steer to nearest airport
+        if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
+        const speed = (p.spd*(dt/1000)/2.5) || 0;
+        p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      }
       // Larger bounds for bigger map
-      if(p.x<-1200||p.x>W+1200||p.y<-1200||p.y>H+1200){ entities.splice(i,1); }
+      if(p.x<-2000||p.x>W+2000||p.y<-2000||p.y>H+2000){ entities.splice(i,1); }
     }
   }
 }
@@ -241,7 +277,7 @@ function drawBackgroundScreen(){
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   // draw world map image behind everything (if loaded) - larger for bigger view
   try{
-    const mapW = Math.max(W,H) * 2.4; const mapH = mapW * 0.5;
+    const mapW = Math.max(W,H) * 3.5; const mapH = mapW * 0.5;
     ctx.globalAlpha = 0.9;
     ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
     ctx.globalAlpha = 1.0;
@@ -338,6 +374,19 @@ function drawEntities(){
 function loop(now){
   const dt = now - last; last = now;
   update(dt);
+  
+  // Auto-follow controlled plane with camera
+  if(controlledPlane){
+    const controlled = entities.find(e=>e.id===controlledPlane);
+    if(controlled){
+      // Smooth camera follow
+      const targetX = controlled.x - cx;
+      const targetY = controlled.y - cy;
+      cam.x += (targetX - cam.x) * 0.1;
+      cam.y += (targetY - cam.y) * 0.1;
+    }
+  }
+  
   drawBackgroundScreen();
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   drawRadar();
@@ -361,17 +410,49 @@ startMainLoop();
 const info = document.getElementById('info');
 const controls = document.getElementById('controls');
 const selectedDiv = document.getElementById('selected');
-function selectEntity(p){ entities.forEach(x=>x.selected=false); if(p){ p.selected=true; controls.classList.remove('hidden');
+function selectEntity(p){ 
+  // Release control if selecting different plane
+  if(p && controlledPlane && controlledPlane !== p.id){
+    const prev = entities.find(e=>e.id===controlledPlane);
+    if(prev) prev._manuallyControlled = false;
+    controlledPlane = null;
+  }
+  entities.forEach(x=>x.selected=false); 
+  if(p){ p.selected=true; controls.classList.remove('hidden');
     selectedDiv.innerHTML = '<strong>'+p.call+'</strong><br>Type: '+(p.type||'civil')+' • ALT: '+Math.round(p.alt)+' ft<br>SPD: '+Math.round(p.spd)+' kt • HDG: '+Math.round((p.hdg*180/Math.PI+360)%360)+'°';
     // update top-right detailed info
     try{
       const panel = document.getElementById('selected-info'); if(panel) panel.classList.remove('hidden');
       const img = document.getElementById('info-img'); if(img) img.src = p.img || svgPlane;
-      const it = document.getElementById('info-type'); if(it) it.textContent = 'Type: ' + (p.type||'civil');
-      const im = document.getElementById('info-model'); if(im) im.textContent = 'Model: ' + (p.model||'—');
+      
+      // Get type label
+      let typeLabel = 'Commercial';
+      if(p.type === 'cargo' || p.type === 'transport') typeLabel = 'Cargo/Transport';
+      else if(p.type === 'fighter') typeLabel = 'Avion de Chasse';
+      else if(p.type === 'enemy') typeLabel = 'Avion Suspect';
+      
+      // Get status
+      let status = 'En vol';
+      if(p.returning) status = 'Retour à l\'aéroport';
+      if(p._alerted) status = '⚠️ Alerté';
+      if(p._beingTracked) status = '🛡️ Suivi par chasseur';
+      
+      const callsignEl = document.getElementById('info-callsign'); if(callsignEl) callsignEl.textContent = p.call || '—';
+      const it = document.getElementById('info-type'); if(it) it.textContent = 'Type: ' + typeLabel;
+      const im = document.getElementById('info-model'); if(im) im.textContent = 'Modèle: ' + (p.model||'—');
+      const originEl = document.getElementById('info-origin'); if(originEl) originEl.innerHTML = '<strong>Départ:</strong> ' + (p.origin || 'Inconnu');
+      const destEl = document.getElementById('info-destination'); if(destEl) destEl.innerHTML = '<strong>Destination:</strong> ' + (p.destination || 'Inconnu');
+      const statusEl = document.getElementById('info-status'); if(statusEl) statusEl.innerHTML = '<strong>Statut:</strong> ' + status;
+      const altEl = document.getElementById('info-alt'); if(altEl) altEl.innerHTML = '<strong>Altitude:</strong> ' + Math.round(p.alt) + ' ft';
+      const spdEl = document.getElementById('info-spd'); if(spdEl) spdEl.innerHTML = '<strong>Vitesse:</strong> ' + Math.round(p.spd) + ' kt';
+      const hdgEl = document.getElementById('info-hdg'); if(hdgEl) hdgEl.innerHTML = '<strong>Cap:</strong> ' + Math.round((p.hdg*180/Math.PI+360)%360) + '°';
     }catch(e){}
     info.textContent = ''
-  } else { controls.classList.add('hidden'); info.textContent = 'Tapez un avion pour le sélectionner' } }
+  } else { 
+    controls.classList.add('hidden'); 
+    const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden');
+    info.textContent = 'Tapez un avion pour le sélectionner' 
+  } }
 
 function findEntityAt(x,y){ // x,y are screen coords; convert to world
   const wx = x + cam.x, wy = y + cam.y;
@@ -400,9 +481,34 @@ canvas.addEventListener('click', e=>{
   if(!item){ const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden'); }
 });
 
-function commandTurn(deltaDeg){ const p = entities.find(x=>x.selected); if(!p) return; p.hdg += (deltaDeg*Math.PI/180); }
-function commandSpeed(dv){ const p = entities.find(x=>x.selected); if(!p) return; p.spd = Math.max(40, p.spd + dv); }
-function commandAlt(dA){ const p = entities.find(x=>x.selected); if(!p) return; p.alt = Math.max(0, p.alt + dA); selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt'; }
+function commandTurn(deltaDeg){ 
+  const p = entities.find(x=>x.selected); 
+  if(!p) return; 
+  p.hdg += (deltaDeg*Math.PI/180);
+  // If manually controlled, update immediately
+  if(p._manuallyControlled){
+    showNotification('Cap modifié: ' + Math.round((p.hdg*180/Math.PI+360)%360) + '°', 'info', 2000);
+  }
+}
+function commandSpeed(dv){ 
+  const p = entities.find(x=>x.selected); 
+  if(!p) return; 
+  p.spd = Math.max(40, p.spd + dv);
+  // If manually controlled, update immediately
+  if(p._manuallyControlled){
+    showNotification('Vitesse: ' + Math.round(p.spd) + ' kt', 'info', 2000);
+  }
+}
+function commandAlt(dA){ 
+  const p = entities.find(x=>x.selected); 
+  if(!p) return; 
+  p.alt = Math.max(0, p.alt + dA); 
+  selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt';
+  // If manually controlled, update immediately
+  if(p._manuallyControlled){
+    showNotification('Altitude: ' + Math.round(p.alt) + ' ft', 'info', 2000);
+  }
+}
 
 const _elLeft = document.getElementById('left'); if(_elLeft) _elLeft.addEventListener('click', ()=>commandTurn(-15));
 const _elRight = document.getElementById('right'); if(_elRight) _elRight.addEventListener('click', ()=>commandTurn(15));
@@ -458,6 +564,28 @@ const _elSendController = document.getElementById('send-controller'); if(_elSend
   });
   info.textContent = 'Contrôleurs envoyés - ' + enemies.length + ' avion(s) suspect(s) alerté(s)';
   setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',2000);
+});
+
+// Take control button
+const _elTakeControl = document.getElementById('take-control'); if(_elTakeControl) _elTakeControl.addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected);
+  if(!p){
+    info.textContent = 'Sélectionnez un avion d\'abord';
+    setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500);
+    return;
+  }
+  // Release previous control
+  if(controlledPlane){
+    const prev = entities.find(e=>e.id===controlledPlane);
+    if(prev) prev._manuallyControlled = false;
+  }
+  // Take control of selected plane
+  p._manuallyControlled = true;
+  controlledPlane = p.id;
+  p.returning = false; // Cancel any return orders
+  showNotification('✈️ Contrôle pris: ' + p.call, 'info', 3000);
+  info.textContent = 'Vous contrôlez maintenant ' + p.call;
+  setTimeout(()=>info.textContent='Utilisez les boutons pour piloter',2000);
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
