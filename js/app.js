@@ -436,8 +436,6 @@ Promise.all(decodes).finally(()=>{
     const sel = document.getElementById('server-select'); 
     if(sel) {
       sel.classList.remove('hidden');
-      // Attach event listeners when server select is shown
-      attachServerButtonListeners();
     }
   }, 300);
 });
@@ -447,13 +445,12 @@ setTimeout(()=>{
   const sel = document.getElementById('server-select'); 
   if(sel) {
     sel.classList.remove('hidden');
-    // Attach event listeners when server select is shown
-    attachServerButtonListeners();
   }
 }, 5000);
 
 // wire server selection buttons to actually start the game
-function launchServer(name){ 
+// Make it global so inline scripts can access it
+window.launchServer = function launchServer(name){ 
   const sel = document.getElementById('server-select'); 
   if(sel) sel.classList.add('hidden'); 
   // Show the game canvas and HUD
@@ -461,50 +458,17 @@ function launchServer(name){
   if(gameMain) gameMain.classList.remove('hidden');
   try{ setStatus('Connecté: '+name); }catch(e){} 
   startMainLoop(); 
-}
+};
 
-// Attach event listeners to server buttons
-function attachServerButtonListeners(){
-  const buttons = document.querySelectorAll('.server-btn-primary, .server-btn'); 
-  buttons.forEach(b=> {
-    // Remove any existing listeners first by cloning
-    const newB = b.cloneNode(true);
-    b.parentNode.replaceChild(newB, b);
-    // Add click listener
-    newB.addEventListener('click', (e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      const s = newB.dataset.server||'fx-control'; 
-      launchServer(s); 
-    });
-  });
-  
-  // Also use event delegation as a fallback (more reliable)
-  const serverSelect = document.getElementById('server-select');
-  if(serverSelect && !serverSelect.hasAttribute('data-delegated')){
-    serverSelect.setAttribute('data-delegated', 'true');
-    serverSelect.addEventListener('click', (e)=>{
-      const btn = e.target.closest('.server-btn-primary, .server-btn');
-      if(btn){
-        e.preventDefault();
-        e.stopPropagation();
-        const s = btn.dataset.server||'fx-control';
-        launchServer(s);
-      }
-    });
+// Simple event delegation - works reliably on GitHub Pages
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('.server-btn-primary, .server-btn');
+  if(btn){
+    e.preventDefault();
+    const s = btn.dataset.server || 'fx-control';
+    launchServer(s);
   }
-}
-
-// Try to attach listeners immediately (if DOM is ready) or wait for DOMContentLoaded
-if(document.readyState === 'loading'){
-  window.addEventListener('DOMContentLoaded', ()=>{
-    attachServerButtonListeners();
-  });
-} else {
-  // DOM is already ready, but buttons might not be visible yet
-  // Will be attached when server-select is shown
-  setTimeout(attachServerButtonListeners, 100);
-}
+});
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
