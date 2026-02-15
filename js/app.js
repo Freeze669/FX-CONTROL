@@ -10,12 +10,20 @@ function resize(){
   canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
   cx = W/2; cy = H/2;
+  // center camera on world center by default (if camera exists)
+  if(typeof cam !== 'undefined'){ cam.x = cx - W/2; cam.y = cy - H/2; }
+  // recompute airports/zones based on new center
+  initAirports(); initZonesAndRoutes();
 }
 window.addEventListener('resize', resize);
 resize();
 
 const entities = []; // planes, fighters, enemies
 const airports = [];
+let showTrajectory = true;
+// camera for pan (world coordinates)
+const cam = {x:0,y:0,zoom:1};
+let isPanning = false, panLast = null;
 let last = performance.now();
 function rand(min,max){return Math.random()*(max-min)+min}
 function callsign(){const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ";return chars[Math.floor(Math.random()*chars.length)]+chars[Math.floor(Math.random()*chars.length)]+Math.floor(rand(10,999)).toString();}
@@ -48,44 +56,82 @@ function spawnAirport(x,y,name){ airports.push({x,y,name,r:28}); }
 
 // Create some airports relative to center
 function initAirports(){
+  airports.length = 0;
   spawnAirport(cx - 120, cy - 80, 'FX-ONE');
   spawnAirport(cx + 140, cy + 60, 'FX-TWO');
 }
 initAirports();
 
+// Airspace zones and routes (recomputed on resize)
+const zones = [];
+const routes = [];
+function initZonesAndRoutes(){
+  zones.length = 0; routes.length = 0;
+  zones.push({x:cx, y:cy-40, r:160, name:'CTR', color:'rgba(45,212,191,0.06)'});
+  zones.push({x:cx+180, y:cy+80, r:110, name:'TMA', color:'rgba(255,90,90,0.05)'});
+  // example route line
+  routes.push([{x:cx-220,y:cy+10},{x:cx-60,y:cy-40},{x:cx+40,y:cy-20},{x:cx+160,y:cy+60}]);
+}
+initZonesAndRoutes();
+
 function update(dt){
   // entity behavior
   for(let i=entities.length-1;i>=0;i--){
     const p = entities[i];
+    // maintain trajectory history
+    p.history = p.history || [];
+    if((p._histTimer||0) <= 0){ p.history.push({x:p.x,y:p.y}); if(p.history.length>120) p.history.shift(); p._histTimer = 200; } else p._histTimer -= dt;
+
     if(p.type==='fighter' && p.targetId){
       const target = entities.find(e=>e.id===p.targetId);
       if(!target){ entities.splice(i,1); continue; }
-      // steer towards target
-      const dx = target.x - p.x, dy = target.y - p.y; const dist = Math.hypot(dx,dy);
+      // follow-behind behavior: aim for point behind the target
+      const followDist = 80;
+      const behindX = target.x - Math.cos(target.hdg)*followDist;
+      const behindY = target.y - Math.sin(target.hdg)*followDist;
+      const dx = behindX - p.x, dy = behindY - p.y; const dist = Math.hypot(dx,dy);
       const desired = Math.atan2(dy,dx);
-      // small heading smoothing
-      let diff = desired - p.hdg; while(diff>Math.PI) diff-=Math.PI*2; while(diff<-Math.PI) diff+=Math.PI*2; p.hdg += diff*0.15;
+      // smooth heading
+      let diff = desired - p.hdg; while(diff>Math.PI) diff-=Math.PI*2; while(diff<-Math.PI) diff+=Math.PI*2; p.hdg += diff*0.12;
       const speed = p.spd*(dt/1000)/2.5;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
-      if(dist<24){ // intercepted
-        // remove enemy and fighter
-        const ti = entities.indexOf(target); if(ti>=0) entities.splice(ti,1);
-        entities.splice(i,1);
-      }
+      // if in intercept mode and close enough, destroy target
+      if(p._mode==='intercept' && dist<26){ const ti = entities.indexOf(target); if(ti>=0) entities.splice(ti,1); entities.splice(i,1); }
     } else {
       // normal movement for civil/enemy
+      // if returning to airport, steer to nearest airport
+      if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
       const speed = (p.spd*(dt/1000)/2.5) || 0;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
-      if(p.x<-300||p.x>W+300||p.y<-300||p.y>H+300){ entities.splice(i,1); }
+      if(p.x<-600||p.x>W+600||p.y<-600||p.y>H+600){ entities.splice(i,1); }
     }
   }
 }
 
-function drawRadar(){
+function drawBackgroundScreen(){
   ctx.clearRect(0,0,W,H);
-  // background subtle texture
-  const grad = ctx.createLinearGradient(0,0,0,H); grad.addColorStop(0,'#051122'); grad.addColorStop(1,'#071428');
+  // richer background gradient
+  const grad = ctx.createLinearGradient(0,0,0,H); grad.addColorStop(0,'#04101d'); grad.addColorStop(1,'#071428');
   ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+  // subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
+  const g = 36;
+  for(let x = - (cam.x % g); x < W; x += g){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y = - (cam.y % g); y < H; y += g){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+}
+
+function drawRadar(){
+  // draw zones (world coordinates assumed)
+  // draw zones
+  zones.forEach(z=>{
+    ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2);
+    ctx.fillStyle = z.color; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(230,242,255,0.7)'; ctx.font='12px system-ui'; ctx.fillText(z.name, z.x - 18, z.y - z.r + 18);
+  });
+  // draw route lines
+  ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(45,212,191,0.18)';
+  routes.forEach(route=>{ ctx.beginPath(); route.forEach((pt,i)=>{ if(i===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); }); ctx.stroke(); });
   // rings
   ctx.save(); ctx.translate(cx,cy);
   const maxR = Math.min(W,H)/2 - 20;
@@ -102,6 +148,11 @@ function drawEntities(){
   });
   entities.forEach(p=>{
     const dx = p.x, dy = p.y;
+    // draw trajectory
+    if(showTrajectory && p.history && p.history.length>1){ ctx.beginPath(); ctx.moveTo(p.history[0].x,p.history[0].y); for(let i=1;i<p.history.length;i++){ ctx.lineTo(p.history[i].x,p.history[i].y); } ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.stroke(); }
+    if(p.selected){ // halo
+      ctx.beginPath(); ctx.arc(dx,dy,26,0,Math.PI*2); ctx.strokeStyle='rgba(255,206,102,0.25)'; ctx.lineWidth=3; ctx.stroke();
+    }
     if(p.type==='enemy'){
       ctx.drawImage(imgEnemy, dx-10, dy-10, 20,20);
     } else if(p.type==='fighter'){
@@ -117,8 +168,11 @@ function drawEntities(){
 function loop(now){
   const dt = now - last; last = now;
   update(dt);
+  drawBackgroundScreen();
+  ctx.save(); ctx.translate(-cam.x, -cam.y);
   drawRadar();
   drawEntities();
+  ctx.restore();
   requestAnimationFrame(loop);
 }
 
@@ -131,12 +185,16 @@ setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('
 const info = document.getElementById('info');
 const controls = document.getElementById('controls');
 const selectedDiv = document.getElementById('selected');
-function selectEntity(p){ entities.forEach(x=>x.selected=false); if(p){ p.selected=true; controls.classList.remove('hidden'); selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt'; info.textContent = '' } else { controls.classList.add('hidden'); info.textContent = 'Tapez un avion pour le sélectionner' } }
+function selectEntity(p){ entities.forEach(x=>x.selected=false); if(p){ p.selected=true; controls.classList.remove('hidden');
+    selectedDiv.innerHTML = '<strong>'+p.call+'</strong><br>Type: '+(p.type||'civil')+' • ALT: '+Math.round(p.alt)+' ft<br>SPD: '+Math.round(p.spd)+' kt • HDG: '+Math.round((p.hdg*180/Math.PI+360)%360)+'°';
+    info.textContent = ''
+  } else { controls.classList.add('hidden'); info.textContent = 'Tapez un avion pour le sélectionner' } }
 
-function findEntityAt(x,y){ // topmost first
-  for(let i=entities.length-1;i>=0;i--){ const p=entities[i]; const dx=p.x-x, dy=p.y-y; if(Math.hypot(dx,dy)<30) return p; }
+function findEntityAt(x,y){ // x,y are screen coords; convert to world
+  const wx = x + cam.x, wy = y + cam.y;
+  for(let i=entities.length-1;i>=0;i--){ const p=entities[i]; const dx=p.x-wx, dy=p.y-wy; if(Math.hypot(dx,dy)<30) return p; }
   // airports
-  for(let a of airports){ if(Math.hypot(a.x-x,a.y-y) < a.r) return {airport:a}; }
+  for(let a of airports){ if(Math.hypot(a.x-wx,a.y-wy) < a.r) return {airport:a}; }
   return null;
 }
 
@@ -163,19 +221,53 @@ document.getElementById('fast').addEventListener('click', ()=>commandSpeed(20));
 document.getElementById('climb').addEventListener('click', ()=>commandAlt(1000));
 document.getElementById('desc').addEventListener('click', ()=>commandAlt(-1000));
 
-// Dispatch fighter button
-const dispatchBtn = document.createElement('button'); dispatchBtn.textContent = '🔧 Dispatch Fighter'; dispatchBtn.style.marginTop='8px'; dispatchBtn.addEventListener('click', ()=>{
-  const p = entities.find(x=>x.selected); if(!p) return; // find nearest airport
-  let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
-  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; info.textContent='Fighter lancé depuis '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+// Controls wired to static buttons in the HTML
+document.getElementById('destroy').addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected); if(!p) return; // if fighter selected with target, destroy target
+  if(p.type==='fighter' && p.targetId){ const target = entities.find(e=>e.id===p.targetId); if(target){ const ti=entities.indexOf(target); if(ti>=0) entities.splice(ti,1); info.textContent='Cible détruite'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); } return; }
+  const idx = entities.indexOf(p); if(idx>=0){ entities.splice(idx,1); info.textContent='Avion détruit'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
 });
-controls.appendChild(dispatchBtn);
+
+document.getElementById('alert').addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected); if(!p) return; // command to return to nearest airport
+  let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
+  if(nearest){ p.returning = true; p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); p.spd = Math.max(60, p.spd*0.8); info.textContent='Ordre: revenir à '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
+});
+
+document.getElementById('dispatch').addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected); if(!p) return; let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
+  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='follow'; info.textContent='Fighter lancé depuis '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+});
+
+document.getElementById('traj').addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
 
 // loading overlay: hide after small delay when images ready
 function hideLoading(){ const L = document.getElementById('loading'); if(L) L.style.display='none'; }
 Promise.all([imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})]).finally(()=>{ setTimeout(hideLoading, 500); requestAnimationFrame(loop); });
 
-// basic touch selection
-let touchStart = null;
-canvas.addEventListener('touchstart', e=>{ const t = e.touches[0]; const rect = canvas.getBoundingClientRect(); touchStart={x:t.clientX-rect.left,y:t.clientY-rect.top,time:Date.now()}; });
-canvas.addEventListener('touchend', e=>{ const t = touchStart; if(!t) return; const now = Date.now(); const item = findEntityAt(t.x,t.y); selectEntity(item); touchStart=null; });
+// pan / click handling (mouse)
+let mouseDown = false, mouseStart = null, mousePanned = false;
+canvas.addEventListener('mousedown', e=>{ mouseDown = true; mouseStart = {x:e.clientX, y:e.clientY}; mousePanned = false; });
+window.addEventListener('mousemove', e=>{
+  if(!mouseDown) return;
+  const dx = e.clientX - mouseStart.x, dy = e.clientY - mouseStart.y;
+  if(!mousePanned && Math.hypot(dx,dy) > 6) mousePanned = true;
+  if(mousePanned){ cam.x -= dx; cam.y -= dy; mouseStart = {x:e.clientX, y:e.clientY}; }
+});
+window.addEventListener('mouseup', e=>{ if(mouseDown && !mousePanned){ /* let click handler run */ } mouseDown = false; mousePanned = false; });
+
+// touch: single-finger tap = select, drag = pan
+let touchState = null;
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){ const t = e.touches[0]; const rect = canvas.getBoundingClientRect(); touchState = {x:t.clientX-rect.left, y:t.clientY-rect.top, screenX:t.clientX, screenY:t.clientY, time:Date.now(), panned:false}; }
+  else if(e.touches.length===2){ // two-finger pan
+    const t0 = e.touches[0], t1 = e.touches[1]; touchState = {x: (t0.clientX+t1.clientX)/2, y:(t0.clientY+t1.clientY)/2, screenX:(t0.clientX+t1.clientX)/2, screenY:(t0.clientY+t1.clientY)/2, panned:false}; }
+});
+canvas.addEventListener('touchmove', e=>{
+  if(!touchState) return;
+  if(e.touches.length>=1){ const t = e.touches[0]; const dx = t.clientX - touchState.screenX, dy = t.clientY - touchState.screenY; if(Math.hypot(dx,dy)>6){ touchState.panned = true; cam.x -= dx; cam.y -= dy; touchState.screenX = t.clientX; touchState.screenY = t.clientY; } }
+});
+canvas.addEventListener('touchend', e=>{
+  if(!touchState) return; if(!touchState.panned){ const item = findEntityAt(touchState.x,touchState.y); selectEntity(item); }
+  touchState = null;
+});

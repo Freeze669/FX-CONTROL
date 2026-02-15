@@ -3,16 +3,18 @@
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
 body{background:linear-gradient(180deg,#051122 0%, #071428 100%);color:var(--text);display:flex;flex-direction:column}
 header{padding:10px 14px;background:transparent;text-align:center}
-header h1{margin:0;font-size:18px}
+header{position:fixed;left:0;right:0;top:0;height:44px;display:flex;align-items:center;justify-content:flex-start;padding:8px 12px;z-index:45;background:linear-gradient(180deg,rgba(0,0,0,0.06),transparent)}
+header h1{margin:0;font-size:16px;letter-spacing:0.6px}
 main{flex:1;position:relative;display:flex;align-items:stretch}
 #radar{width:100%;height:100%;display:block}
 #hud{position:absolute;left:10px;right:10px;bottom:10px;pointer-events:none}
 #info{background:var(--panel);padding:8px;border-radius:8px;color:var(--text);pointer-events:auto}
+.control-panel{backdrop-filter:blur(6px);background:rgba(0,0,0,0.36);padding:10px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
 #controls{margin-top:8px;pointer-events:auto}
 .hidden{display:none}
 .btn-row{display:flex;gap:8px;margin-top:6px}
-button{flex:1;padding:12px;border:0;border-radius:8px;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px}
 #controls button svg{vertical-align:middle;margin-left:6px}
+button{flex:1;padding:12px;border:0;border-radius:8px;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px}
 #selected{background:rgba(0,0,0,0.5);padding:8px;border-radius:8px}
 footer{padding:8px;text-align:center;font-size:12px;color:rgba(230,242,255,0.7)}
 
@@ -26,4 +28,18 @@ html,body,main,#radar{height:100%}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .btn-row button{display:flex;align-items:center;justify-content:center;gap:6px}
+
+/* airspace zones */
+.zone-label{font-size:12px;color:rgba(230,242,255,0.85)}
+
+/* selected halo */
+.halo{box-shadow:0 0 0 4px rgba(255,206,102,0.08);border-radius:50%}
+
+/* small HUD */
+#hud{left:10px;right:10px;bottom:10px}
+.control-panel{display:flex;flex-direction:column;gap:8px}
+.btn-row{display:flex}
+.btn-row button{flex:1}
+
+
 
