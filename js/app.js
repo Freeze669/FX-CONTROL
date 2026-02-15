@@ -242,8 +242,16 @@ document.getElementById('dispatch').addEventListener('click', ()=>{
 document.getElementById('traj').addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
 
 // loading overlay: hide after small delay when images ready
-function hideLoading(){ const L = document.getElementById('loading'); if(L) L.style.display='none'; }
-Promise.all([imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})]).finally(()=>{ setTimeout(hideLoading, 500); requestAnimationFrame(loop); });
+function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
+// Ensure promises are real promises (some browsers may not implement decode)
+const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
+let _miniatc_loop_started = false;
+Promise.all(decodes).finally(()=>{
+  setTimeout(hideLoading, 300);
+  if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; }
+});
+// Safety: if something blocks, forcibly hide loading and start loop after 5s
+setTimeout(()=>{ hideLoading(); if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; } }, 5000);
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
