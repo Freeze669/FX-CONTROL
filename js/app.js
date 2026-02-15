@@ -449,8 +449,7 @@ setTimeout(()=>{
 }, 5000);
 
 // wire server selection buttons to actually start the game
-// Make it global so inline scripts can access it
-window.launchServer = function launchServer(name){ 
+function launchServer(name){ 
   const sel = document.getElementById('server-select'); 
   if(sel) sel.classList.add('hidden'); 
   // Show the game canvas and HUD
@@ -458,8 +457,17 @@ window.launchServer = function launchServer(name){
   if(gameMain) gameMain.classList.remove('hidden');
   try{ setStatus('Connecté: '+name); }catch(e){} 
   startMainLoop(); 
-};
+}
 
+// Simple button click handler
+document.addEventListener('DOMContentLoaded', function(){
+  const connectBtn = document.getElementById('connect-btn');
+  if(connectBtn){
+    connectBtn.onclick = function(){
+      launchServer('fx-control');
+    };
+  }
+});
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
