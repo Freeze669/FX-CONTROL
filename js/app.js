@@ -1,6 +1,9 @@
 /* Enhanced app: icons (SVG data), airports, enemies, fighters, loading overlay, improved selection */
 const canvas = document.getElementById('radar');
 const ctx = canvas.getContext('2d');
+// camera for pan (world coordinates) - declared early so resize() can use it
+const cam = {x:0,y:0,zoom:1};
+let isPanning = false, panLast = null;
 let W, H, cx, cy;
 function resize(){
   const dpr = window.devicePixelRatio || 1;
@@ -21,9 +24,6 @@ resize();
 const entities = []; // planes, fighters, enemies
 const airports = [];
 let showTrajectory = true;
-// camera for pan (world coordinates)
-const cam = {x:0,y:0,zoom:1};
-let isPanning = false, panLast = null;
 let last = performance.now();
 function rand(min,max){return Math.random()*(max-min)+min}
 function callsign(){const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ";return chars[Math.floor(Math.random()*chars.length)]+chars[Math.floor(Math.random()*chars.length)]+Math.floor(rand(10,999)).toString();}
