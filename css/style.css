@@ -41,5 +41,13 @@ html,body,main,#radar{height:100%}
 .btn-row{display:flex}
 .btn-row button{flex:1}
 
+/* selected info top-right */
+#selected-info{position:fixed;right:12px;top:54px;z-index:46;pointer-events:auto}
+#selected-info .info-panel{background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);padding:8px;border-radius:10px;display:flex;gap:8px;align-items:center;min-width:160px}
+#selected-info .info-img img{width:48px;height:48px;display:block}
+#selected-info .info-meta{color:var(--text);font-size:13px}
+.info-line{margin-bottom:4px}
+.hidden{display:none}
+
 
 

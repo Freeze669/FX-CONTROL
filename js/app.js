@@ -41,6 +41,12 @@ const svgFighter = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="
 const svgEnemy = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23ff2d55"/></svg>');
 const svgAirport = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="4" rx="1" fill="%232dd4bf"/></svg>');
 
+// model-specific SVGs (nicer images)
+const svgA320 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23e6eef8" stroke="%23263b4f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23263b4f">A320</text></svg>');
+const svgB737 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23fff4e6" stroke="%233b2b1f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%233b2b1f">B737</text></svg>');
+const svgE195 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23e8f6ea" stroke="%23294b2f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23294b2f">E195</text></svg>');
+const svgA321 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23f0e8ff" stroke="%23284a6f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23284a6f">A321</text></svg>');
+
 const imgPlane = new Image(); imgPlane.src = svgPlane;
 const imgFighter = new Image(); imgFighter.src = svgFighter;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
@@ -53,8 +59,20 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   const py = y!==null? y : cy + Math.sin(angle)*r;
   const phd = hdg!==null? hdg : ((angle + Math.PI) % (Math.PI*2));
   const base = {id:Date.now().toString(36)+Math.floor(Math.random()*1000),call:callsign(),x:px,y:py,hdg:phd,spd:rand(80,220),alt:rand(2000,36000),selected:false,type:type};
-  if(type==='fighter'){ base.spd = 800; base.targetId = null; }
-  if(type==='enemy'){ base.spd = rand(160,300); }
+  // assign model and tweak speeds
+  if(type==='fighter'){ base.spd = 380; base.targetId = null; base.model = 'F-16'; base.img = svgFighter; }
+  else if(type==='enemy'){ base.spd = rand(160,300); base.model = 'Unknown'; base.img = svgEnemy; }
+  else { // civil
+    const civilModels = ['A320','B737','E195','A321'];
+    base.model = civilModels[Math.floor(Math.random()*civilModels.length)];
+    // pick model-specific SVG
+    if(base.model==='A320') base.img = svgA320;
+    else if(base.model==='B737') base.img = svgB737;
+    else if(base.model==='E195') base.img = svgE195;
+    else if(base.model==='A321') base.img = svgA321;
+    else base.img = svgPlane;
+  }
+  
   entities.push(base);
 }
 
@@ -200,6 +218,13 @@ const controls = document.getElementById('controls');
 const selectedDiv = document.getElementById('selected');
 function selectEntity(p){ entities.forEach(x=>x.selected=false); if(p){ p.selected=true; controls.classList.remove('hidden');
     selectedDiv.innerHTML = '<strong>'+p.call+'</strong><br>Type: '+(p.type||'civil')+' • ALT: '+Math.round(p.alt)+' ft<br>SPD: '+Math.round(p.spd)+' kt • HDG: '+Math.round((p.hdg*180/Math.PI+360)%360)+'°';
+    // update top-right detailed info
+    try{
+      const panel = document.getElementById('selected-info'); if(panel) panel.classList.remove('hidden');
+      const img = document.getElementById('info-img'); if(img) img.src = p.img || svgPlane;
+      const it = document.getElementById('info-type'); if(it) it.textContent = 'Type: ' + (p.type||'civil');
+      const im = document.getElementById('info-model'); if(im) im.textContent = 'Model: ' + (p.model||'—');
+    }catch(e){}
     info.textContent = ''
   } else { controls.classList.add('hidden'); info.textContent = 'Tapez un avion pour le sélectionner' } }
 
@@ -221,6 +246,13 @@ canvas.addEventListener('click', e=>{
     return;
   }
   selectEntity(item);
+});
+
+// hide top-right info when deselecting via click on empty space
+canvas.addEventListener('click', e=>{
+  const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+  const item = findEntityAt(x,y);
+  if(!item){ const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden'); }
 });
 
 function commandTurn(deltaDeg){ const p = entities.find(x=>x.selected); if(!p) return; p.hdg += (deltaDeg*Math.PI/180); }
