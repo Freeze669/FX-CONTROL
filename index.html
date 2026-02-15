@@ -97,6 +97,30 @@
       // register the (new) service worker after a short delay so purge can complete
       setTimeout(()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); }, 400);
     })();
+    
+    // Additional fallback for server button - ensures it works on GitHub Pages
+    (function(){
+      function initServerButton(){
+        const btn = document.querySelector('.server-btn-primary');
+        if(btn && !btn.hasAttribute('data-initialized')){
+          btn.setAttribute('data-initialized', 'true');
+          btn.addEventListener('click', function(e){
+            e.preventDefault();
+            if(typeof launchServer === 'function'){
+              launchServer(btn.dataset.server || 'fx-control');
+            }
+          });
+        }
+      }
+      // Try multiple times to catch the button
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', initServerButton);
+      } else {
+        initServerButton();
+      }
+      setTimeout(initServerButton, 500);
+      setTimeout(initServerButton, 1500);
+    })();
   </script>
 </body>
 </html>
