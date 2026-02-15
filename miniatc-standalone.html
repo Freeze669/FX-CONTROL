@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>MiniATC — autonome</title>
+  <style>
+  :root{--bg:#071428;--accent:#2dd4bf;--panel:rgba(0,0,0,0.4);--text:#e6f2ff}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  body{background:linear-gradient(180deg,#051122 0%, #071428 100%);color:var(--text);display:flex;flex-direction:column}
+  header{padding:10px 14px;background:transparent;text-align:center}
+  header h1{margin:0;font-size:18px}
+  main{flex:1;position:relative;display:flex;align-items:stretch}
+  #radar{width:100%;height:100%;display:block}
+  #hud{position:absolute;left:10px;right:10px;bottom:10px;pointer-events:none}
+  #info{background:var(--panel);padding:8px;border-radius:8px;color:var(--text);pointer-events:auto}
+  #controls{margin-top:8px;pointer-events:auto}
+  .hidden{display:none}
+  .btn-row{display:flex;gap:8px;margin-top:6px}
+  button{flex:1;padding:12px;border:0;border-radius:8px;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px}
+  #selected{background:rgba(0,0,0,0.5);padding:8px;border-radius:8px}
+  footer{padding:8px;text-align:center;font-size:12px;color:rgba(230,242,255,0.7)}
+  html,body,main,#radar{height:100%}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MiniATC</h1>
+    <p>Version autonome — ouvrez ce fichier sur iPhone</p>
+  </header>
+
+  <main>
+    <canvas id="radar"></canvas>
+    <div id="hud">
+      <div id="info">Tapez un avion pour le sélectionner</div>
+      <div id="controls" class="hidden">
+        <div id="selected"></div>
+        <div class="btn-row">
+          <button id="left">◀️ Tourner</button>
+          <button id="right">▶️ Tourner</button>
+        </div>
+        <div class="btn-row">
+          <button id="slow">🐢 -V</button>
+          <button id="fast">🏎️ +V</button>
+        </div>
+        <div class="btn-row">
+          <button id="desc">⬇️ -ALT</button>
+          <button id="climb">⬆️ +ALT</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <small>Ouvrir dans Safari pour la meilleure expérience (ajouter à l'écran d'accueil manuellement).</small>
+  </footer>
+
+  <script>
+  (function(){
+  const canvas = document.getElementById('radar');
+  const ctx = canvas.getContext('2d');
+  let W, H, cx, cy;
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    W = canvas.clientWidth = canvas.offsetWidth;
+    H = canvas.clientHeight = canvas.offsetHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    cx = W/2; cy = H/2;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  const planes = [];
+  let last = performance.now();
+  function rand(min,max){return Math.random()*(max-min)+min}
+  function callsign(){const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ";return chars[Math.floor(Math.random()*chars.length)]+chars[Math.floor(Math.random()*chars.length)]+Math.floor(rand(10,999)).toString();}
+  function spawnPlane(){
+    const angle = rand(0,Math.PI*2);
+    const r = Math.max(W,H)/2 + 60;
+    const x = cx + Math.cos(angle)*r;
+    const y = cy + Math.sin(angle)*r;
+    const hdg = (angle + Math.PI) % (Math.PI*2);
+    planes.push({id:Date.now().toString(36)+Math.floor(Math.random()*1000),call:callsign(),x,y,hdg,spd:rand(80,320),alt:rand(2000,36000),selected:false});
+  }
+  function update(dt){
+    planes.forEach(p=>{
+      const vx = Math.cos(p.hdg)*p.spd*(dt/1000)/2.5;
+      const vy = Math.sin(p.hdg)*p.spd*(dt/1000)/2.5;
+      p.x += vx; p.y += vy;
+      if(p.x<-200||p.x>W+200||p.y<-200||p.y>H+200){
+        const i = planes.indexOf(p);
+        if(i>=0) planes.splice(i,1);
+      }
+    });
+  }
+  function drawRadar(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = 'rgba(5,12,34,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.save(); ctx.translate(cx,cy);
+    const maxR = Math.min(W,H)/2 - 20;
+    ctx.strokeStyle = 'rgba(200,240,255,0.06)'; ctx.lineWidth = 1;
+    for(let r= maxR; r>0; r-=maxR/4){ ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(-maxR,0); ctx.lineTo(maxR,0); ctx.moveTo(0,-maxR); ctx.lineTo(0,maxR); ctx.stroke();
+    ctx.restore();
+  }
+  function drawPlanes(){
+    planes.forEach(p=>{
+      const dx = p.x; const dy = p.y;
+      ctx.save();
+      ctx.translate(dx,dy);
+      ctx.rotate(p.hdg);
+      ctx.fillStyle = p.selected? '#ffce66' : '#2dd4bf';
+      ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-6,5); ctx.lineTo(-6,-5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(230,242,255,0.9)'; ctx.font='12px system-ui'; ctx.fillText(p.call, dx+12, dy-8);
+      ctx.fillStyle = 'rgba(230,242,255,0.6)'; ctx.font='11px system-ui'; ctx.fillText(Math.round(p.alt)+' ft', dx+12, dy+8);
+    });
+  }
+  function loop(now){
+    const dt = now - last; last = now;
+    update(dt);
+    drawRadar();
+    drawPlanes();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  setInterval(()=>{ if(planes.length<8) spawnPlane(); }, 1500);
+  const info = document.getElementById('info');
+  const controls = document.getElementById('controls');
+  const selectedDiv = document.getElementById('selected');
+  function selectPlane(p){ planes.forEach(x=>x.selected=false); if(p){ p.selected=true; controls.classList.remove('hidden'); selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt'; info.textContent = '' } else { controls.classList.add('hidden'); info.textContent = 'Tapez un avion pour le sélectionner' } }
+  function findPlaneAt(x,y){ for(let i=0;i<planes.length;i++){ const p=planes[i]; const dx=p.x-x, dy=p.y-y; if(Math.hypot(dx,dy)<22) return p; } return null; }
+  canvas.addEventListener('click', e=>{ const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; const p = findPlaneAt(x,y); selectPlane(p); });
+  function commandTurn(deltaDeg){ const p = planes.find(x=>x.selected); if(!p) return; p.hdg += (deltaDeg*Math.PI/180); }
+  function commandSpeed(dv){ const p = planes.find(x=>x.selected); if(!p) return; p.spd = Math.max(40, p.spd + dv); }
+  function commandAlt(dA){ const p = planes.find(x=>x.selected); if(!p) return; p.alt = Math.max(0, p.alt + dA); selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt'; }
+  document.getElementById('left').addEventListener('click', ()=>commandTurn(-15));
+  document.getElementById('right').addEventListener('click', ()=>commandTurn(15));
+  document.getElementById('slow').addEventListener('click', ()=>commandSpeed(-20));
+  document.getElementById('fast').addEventListener('click', ()=>commandSpeed(20));
+  document.getElementById('climb').addEventListener('click', ()=>commandAlt(1000));
+  document.getElementById('desc').addEventListener('click', ()=>commandAlt(-1000));
+  let touchStart = null;
+  canvas.addEventListener('touchstart', e=>{ const t = e.touches[0]; const rect = canvas.getBoundingClientRect(); const x = t.clientX-rect.left; const y = t.clientY-rect.top; touchStart={x,y,time:Date.now()}; });
+  canvas.addEventListener('touchend', e=>{ const t = touchStart; if(!t) return; const now = Date.now(); const rect = canvas.getBoundingClientRect(); const x = t.x; const y = t.y; const p = findPlaneAt(x,y); selectPlane(p); touchStart = null; });
+  })();
+  </script>
+</body>
+</html>

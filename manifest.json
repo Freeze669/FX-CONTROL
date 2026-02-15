@@ -1,0 +1,9 @@
+{
+  "name": "MiniATC — Contrôle Aérien",
+  "short_name": "MiniATC",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#071428",
+  "theme_color": "#2dd4bf",
+  "icons": []
+}
