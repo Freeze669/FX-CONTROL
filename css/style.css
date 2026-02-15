@@ -21,7 +21,11 @@ footer{padding:8px;text-align:center;font-size:12px;color:rgba(230,242,255,0.7)}
 /* Make canvas full-bleed on iPhone */
 html,body,main,#radar{height:100%}
 
-/* (loading overlay removed) */
+/* loading overlay */
+#loading{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(7,20,40,0.9), rgba(5,8,18,0.9));z-index:40}
+.loader{width:56px;height:56px;border-radius:50%;border:6px solid rgba(255,255,255,0.08);border-top-color:var(--accent);animation:spin 1s linear infinite}
+.loading-text{margin-top:12px;color:rgba(230,242,255,0.9)}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 .btn-row button{display:flex;align-items:center;justify-content:center;gap:6px}
 
