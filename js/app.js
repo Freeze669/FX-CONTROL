@@ -89,6 +89,8 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     else base.img = svgPlane;
   }
   
+  // record spawn time to avoid immediate interception on spawn
+  base._spawnTime = performance.now();
   entities.push(base);
 }
 
@@ -163,7 +165,15 @@ function update(dt){
       const speed = p.spd*(dt/1000)/2.5;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
       // if in intercept mode and close enough, destroy target
-      if(p._mode==='intercept' && dist<26){ const ti = entities.indexOf(target); if(ti>=0) entities.splice(ti,1); entities.splice(i,1); }
+      // but avoid immediate destroy right after spawn (spawn grace period)
+      if(p._mode==='intercept' && dist<26){
+        const nowt = performance.now();
+        const grace = 1200; // ms after spawn before interception allowed
+        if((!p._spawnTime) || (nowt - p._spawnTime) > grace){
+          const ti = entities.indexOf(target); if(ti>=0) entities.splice(ti,1);
+          entities.splice(i,1);
+        }
+      }
     } else {
       // normal movement for civil/enemy
       // if returning to airport, steer to nearest airport
@@ -354,11 +364,21 @@ function hideLoading(){ const L = document.getElementById('loading'); if(L){ try
 // Ensure promises are real promises (some browsers may not implement decode)
 const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
-  setTimeout(hideLoading, 300);
-  startMainLoop();
+  // hide raw loading and show server select UI after brief delay
+  setTimeout(()=>{
+    hideLoading();
+    const sel = document.getElementById('server-select'); if(sel) sel.classList.remove('hidden');
+  }, 300);
 });
 // Safety: if something blocks, forcibly hide loading and start loop after 5s
-setTimeout(()=>{ hideLoading(); startMainLoop(); }, 5000);
+// Safety: if something blocks, forcibly hide loading and show server select after 5s
+setTimeout(()=>{ hideLoading(); const sel = document.getElementById('server-select'); if(sel) sel.classList.remove('hidden'); }, 5000);
+
+// wire server selection buttons to actually start the game
+function launchServer(name){ const sel = document.getElementById('server-select'); if(sel) sel.classList.add('hidden'); try{ setStatus('Connecté: '+name); }catch(e){} startMainLoop(); }
+window.addEventListener('DOMContentLoaded', ()=>{
+  const buttons = document.querySelectorAll('.server-btn'); buttons.forEach(b=> b.addEventListener('click', ()=>{ const s = b.dataset.server||'local'; launchServer(s); }));
+});
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
