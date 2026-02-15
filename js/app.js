@@ -26,8 +26,6 @@ function resize(){
   // recompute airports/zones based on new center
   initAirports(); initZonesAndRoutes();
 }
-window.addEventListener('resize', resize);
-resize();
 
 const entities = []; // planes, fighters, enemies
 const airports = [];
@@ -81,6 +79,10 @@ function initZonesAndRoutes(){
   routes.push([{x:cx-220,y:cy+10},{x:cx-60,y:cy-40},{x:cx+40,y:cy-20},{x:cx+160,y:cy+60}]);
 }
 initZonesAndRoutes();
+
+// now that `airports` and `zones` are defined above, register resize handler
+window.addEventListener('resize', resize);
+resize();
 
 function update(dt){
   // entity behavior
