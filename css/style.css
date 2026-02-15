@@ -49,5 +49,17 @@ html,body,main,#radar{height:100%}
 .info-line{margin-bottom:4px}
 .hidden{display:none}
 
+/* Orientation adjustments: ensure UI works well in portrait and landscape */
+@media (orientation:portrait){
+	#selected-info{right:12px;top:64px;}
+	#hud{left:10px;right:10px;bottom:10px}
+	#controls button{padding:10px;font-size:15px}
+}
+@media (orientation:landscape){
+	#selected-info{right:12px;top:12px}
+	#hud{left:12px;right:220px;bottom:12px}
+	#radar{height:100vh}
+}
+
 
 

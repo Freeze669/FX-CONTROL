@@ -78,11 +78,31 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
 
 function spawnAirport(x,y,name){ airports.push({x,y,name,r:28}); }
 
-// Create some airports relative to center
+// define a set of cities and countries (for background map-like look)
+const countries = [
+  {x: -200, y: -80, w: 360, h: 220, name: 'Pays A', color: 'rgba(20,60,100,0.18)'},
+  {x: 40, y: 60, w: 420, h: 260, name: 'Pays B', color: 'rgba(40,30,70,0.14)'},
+  {x: -340, y: 120, w: 240, h: 160, name: 'Pays C', color: 'rgba(60,40,20,0.08)'}
+];
+
+// cities computed relative to current canvas center (cx, cy)
+function getCities(){
+  return [
+    {x: cx - 160, y: cy - 90, name: 'Ville Nord'},
+    {x: cx + 120, y: cy + 80, name: 'Ville Sud'},
+    {x: cx - 60, y: cy + 140, name: 'Ville Est'},
+    {x: cx + 220, y: cy - 40, name: 'Ville Ouest'}
+  ];
+}
+
+// Create airports based on cities so there are more airports
 function initAirports(){
   airports.length = 0;
+  // core/central airports (keep old ones too)
   spawnAirport(cx - 120, cy - 80, 'FX-ONE');
   spawnAirport(cx + 140, cy + 60, 'FX-TWO');
+  // city airports
+  for(const c of getCities()){ spawnAirport(c.x, c.y, 'APT '+c.name.replace(/\s+/g,'')); }
 }
 initAirports();
 
@@ -93,6 +113,8 @@ function initZonesAndRoutes(){
   zones.length = 0; routes.length = 0;
   zones.push({x:cx, y:cy-40, r:160, name:'CTR', color:'rgba(45,212,191,0.06)'});
   zones.push({x:cx+180, y:cy+80, r:110, name:'TMA', color:'rgba(255,90,90,0.05)'});
+  // add small city zones for realism
+  for(const c of getCities()){ zones.push({x:c.x, y:c.y, r:60, name: c.name+' CTR', color:'rgba(200,220,255,0.04)'}); }
   // example route line
   routes.push([{x:cx-220,y:cy+10},{x:cx-60,y:cy-40},{x:cx+40,y:cy-20},{x:cx+160,y:cy+60}]);
 }
@@ -100,6 +122,7 @@ initZonesAndRoutes();
 
 // now that `airports` and `zones` are defined above, register resize handler
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>{ setTimeout(resize,120); });
 resize();
 
 function update(dt){
@@ -141,6 +164,12 @@ function drawBackgroundScreen(){
   // richer background gradient
   const grad = ctx.createLinearGradient(0,0,0,H); grad.addColorStop(0,'#04101d'); grad.addColorStop(1,'#071428');
   ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+  // draw simple country blocks as an abstract map background
+  ctx.save(); ctx.translate(-cam.x, -cam.y);
+  for(const c of countries){ ctx.fillStyle = c.color; ctx.fillRect(c.x, c.y, c.w, c.h); ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(c.x, c.y, c.w, c.h); ctx.fillStyle = 'rgba(230,242,255,0.04)'; ctx.font='11px system-ui'; ctx.fillText(c.name, c.x+8, c.y+14); }
+  // draw city dots
+  for(const c of getCities()){ ctx.beginPath(); ctx.fillStyle='rgba(255,230,180,0.9)'; ctx.arc(c.x, c.y, 5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(230,242,255,0.9)'; ctx.font='12px system-ui'; ctx.fillText(c.name, c.x + 10, c.y + 4); }
+  ctx.restore();
   // subtle grid
   ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
   const g = 36;
@@ -207,7 +236,8 @@ function loop(now){
 // initial spawning
 for(let i=0;i<6;i++) spawnPlane('civil');
 setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<8) spawnPlane('civil'); }, 1800);
-setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('enemy'); }, 6500);
+// reduce enemy spawn frequency and max count to make game less hostile
+setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 12000);
 
 // ensure the main loop starts immediately (don't wait for image.decode)
 startMainLoop();
