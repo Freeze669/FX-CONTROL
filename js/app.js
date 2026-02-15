@@ -1,11 +1,18 @@
 /* Enhanced app: icons (SVG data), airports, enemies, fighters, loading overlay, improved selection */
 const canvas = document.getElementById('radar');
 const ctx = canvas.getContext('2d');
+// status helper shown in HUD and console
+const _statusEl = document.getElementById && document.getElementById('info');
+function setStatus(msg){ try{ if(_statusEl) _statusEl.textContent = msg; }catch(e){} console.log('[MiniATC] '+msg); }
+setStatus('Initialisation...');
+window.addEventListener('error', ev=>{ console.error(ev.error||ev.message); try{ if(_statusEl) _statusEl.textContent = 'Erreur: '+(ev.error?.message||ev.message); }catch(e){} });
+window.addEventListener('unhandledrejection', ev=>{ console.error('UnhandledRejection', ev.reason); try{ if(_statusEl) _statusEl.textContent = 'Erreur promise: '+(ev.reason?.message||String(ev.reason)); }catch(e){} });
 // camera for pan (world coordinates) - declared early so resize() can use it
 const cam = {x:0,y:0,zoom:1};
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
 let _miniatc_loop_started = false;
+function startMainLoop(){ if(!_miniatc_loop_started){ _miniatc_loop_started = true; try{ setStatus('Démarrage boucle'); hideLoading(); requestAnimationFrame(loop); setStatus(''); }catch(e){ console.error(e); setStatus('Erreur au démarrage: '+(e.message||e)); } } }
 function resize(){
   const dpr = window.devicePixelRatio || 1;
   W = canvas.clientWidth = canvas.offsetWidth;
@@ -183,7 +190,7 @@ setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<8) spawnPlane('
 setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('enemy'); }, 6500);
 
 // ensure the main loop starts immediately (don't wait for image.decode)
-if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; }
+startMainLoop();
 
 // UI and interaction
 const info = document.getElementById('info');
@@ -251,10 +258,10 @@ function hideLoading(){ const L = document.getElementById('loading'); if(L){ try
 const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
   setTimeout(hideLoading, 300);
-  if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; }
+  startMainLoop();
 });
 // Safety: if something blocks, forcibly hide loading and start loop after 5s
-setTimeout(()=>{ hideLoading(); if(!_miniatc_loop_started){ requestAnimationFrame(loop); _miniatc_loop_started = true; } }, 5000);
+setTimeout(()=>{ hideLoading(); startMainLoop(); }, 5000);
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
