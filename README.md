@@ -73,6 +73,10 @@ git push -u origin main
 ```
 3. Une fois poussé, activez GitHub Pages si vous voulez héberger la version web statique (Settings → Pages → branch `main` / root).
 
+Déploiement automatique (GitHub Actions)
+- Un workflow est inclus: `.github/workflows/pages.yml`. Il publie le contenu du dépôt sur GitHub Pages automatiquement à chaque `push` sur `main`.
+- Pour activer: poussez sur `main`. Allez dans `Settings → Pages` et vérifiez que la source est configurée (la première publication se fera automatiquement via l'action). Si votre dépôt est privé, autorisez Pages pour ce dépôt.
+
 Créer le ZIP de distribution (optionnel):
 ```powershell
 cd "c:\Users\FX 2\Desktop\FX CONTROL"
