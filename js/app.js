@@ -8,7 +8,7 @@ setStatus('Initialisation...');
 window.addEventListener('error', ev=>{ console.error(ev.error||ev.message); try{ if(_statusEl) _statusEl.textContent = 'Erreur: '+(ev.error?.message||ev.message); }catch(e){} });
 window.addEventListener('unhandledrejection', ev=>{ console.error('UnhandledRejection', ev.reason); try{ if(_statusEl) _statusEl.textContent = 'Erreur promise: '+(ev.reason?.message||String(ev.reason)); }catch(e){} });
 // camera for pan (world coordinates) - declared early so resize() can use it
-const cam = {x:0,y:0,zoom:1};
+const cam = {x:0,y:0,zoom:0.6}; // Reduced zoom for larger map view
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
 let _miniatc_loop_started = false;
@@ -46,11 +46,18 @@ const svgA320 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 const svgB737 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23fff4e6" stroke="%233b2b1f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%233b2b1f">B737</text></svg>');
 const svgE195 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23e8f6ea" stroke="%23294b2f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23294b2f">E195</text></svg>');
 const svgA321 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23f0e8ff" stroke="%23284a6f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23284a6f">A321</text></svg>');
+// Transport/Cargo planes
+const svgCargo = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="18" width="52" height="28" fill="%23ffa500" stroke="%23404040"/><text x="32" y="38" font-size="9" text-anchor="middle" fill="%23404040">CARGO</text></svg>');
+const svgA330 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23c8e6ff" stroke="%231a3a5a"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%231a3a5a">A330</text></svg>');
+const svgB777 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23ffe6cc" stroke="%23404020"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23404020">B777</text></svg>');
 
 const imgPlane = new Image(); imgPlane.src = svgPlane;
 const imgFighter = new Image(); imgFighter.src = svgFighter;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
 const imgAirport = new Image(); imgAirport.src = svgAirport;
+const imgCargo = new Image(); imgCargo.src = svgCargo;
+const imgA330 = new Image(); imgA330.src = svgA330;
+const imgB777 = new Image(); imgB777.src = svgB777;
 
 // stylized world map SVG as background (low-detail, abstract continents)
 const svgWorld = svgDataURL(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
@@ -70,7 +77,7 @@ const imgWorldMap = new Image(); imgWorldMap.src = svgWorld;
 
 function spawnPlane(type='civil', x=null, y=null, hdg=null){
   const angle = rand(0,Math.PI*2);
-  const r = Math.max(W,H)/2 + 60;
+  const r = Math.max(W,H)/1.5 + 120; // Larger spawn radius for bigger map
   const px = x!==null? x : cx + Math.cos(angle)*r;
   const py = y!==null? y : cy + Math.sin(angle)*r;
   const phd = hdg!==null? hdg : ((angle + Math.PI) % (Math.PI*2));
@@ -78,14 +85,26 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   // assign model and tweak speeds
   if(type==='fighter'){ base.spd = 380; base.targetId = null; base.model = 'F-16'; base.img = svgFighter; }
   else if(type==='enemy'){ base.spd = rand(160,300); base.model = 'Unknown'; base.img = svgEnemy; }
-  else { // civil
-    const civilModels = ['A320','B737','E195','A321'];
+  else if(type==='cargo' || type==='transport'){ 
+    base.spd = rand(140,200); // Cargo planes are slower
+    base.alt = rand(18000,30000); // Usually fly lower
+    const cargoModels = ['Cargo','A330F','B777F'];
+    base.model = cargoModels[Math.floor(Math.random()*cargoModels.length)];
+    if(base.model==='Cargo') base.img = svgCargo;
+    else if(base.model==='A330F') base.img = svgA330;
+    else if(base.model==='B777F') base.img = svgB777;
+    else base.img = svgCargo;
+  }
+  else { // civil passenger
+    const civilModels = ['A320','B737','E195','A321','A330','B777'];
     base.model = civilModels[Math.floor(Math.random()*civilModels.length)];
     // pick model-specific SVG
     if(base.model==='A320') base.img = svgA320;
     else if(base.model==='B737') base.img = svgB737;
     else if(base.model==='E195') base.img = svgE195;
     else if(base.model==='A321') base.img = svgA321;
+    else if(base.model==='A330') base.img = svgA330;
+    else if(base.model==='B777') base.img = svgB777;
     else base.img = svgPlane;
   }
   
@@ -96,45 +115,61 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
 
 function spawnAirport(x,y,name){ airports.push({x,y,name,r:28}); }
 
-// define a set of cities and countries (for background map-like look)
+// define a set of cities and countries (for background map-like look) - enlarged for bigger map
 const countries = [
-  {x: -200, y: -80, w: 360, h: 220, name: 'Pays A', color: 'rgba(20,60,100,0.18)'},
-  {x: 40, y: 60, w: 420, h: 260, name: 'Pays B', color: 'rgba(40,30,70,0.14)'},
-  {x: -340, y: 120, w: 240, h: 160, name: 'Pays C', color: 'rgba(60,40,20,0.08)'}
+  {x: -400, y: -160, w: 720, h: 440, name: 'Pays A', color: 'rgba(20,60,100,0.18)'},
+  {x: 80, y: 120, w: 840, h: 520, name: 'Pays B', color: 'rgba(40,30,70,0.14)'},
+  {x: -680, y: 240, w: 480, h: 320, name: 'Pays C', color: 'rgba(60,40,20,0.08)'},
+  {x: 600, y: -200, w: 600, h: 380, name: 'Pays D', color: 'rgba(30,50,80,0.15)'}
 ];
 
-// cities computed relative to current canvas center (cx, cy)
+// cities computed relative to current canvas center (cx, cy) - more cities for larger map
 function getCities(){
   return [
-    {x: cx - 160, y: cy - 90, name: 'Ville Nord'},
-    {x: cx + 120, y: cy + 80, name: 'Ville Sud'},
-    {x: cx - 60, y: cy + 140, name: 'Ville Est'},
-    {x: cx + 220, y: cy - 40, name: 'Ville Ouest'}
+    {x: cx - 320, y: cy - 180, name: 'Ville Nord'},
+    {x: cx + 240, y: cy + 160, name: 'Ville Sud'},
+    {x: cx - 120, y: cy + 280, name: 'Ville Est'},
+    {x: cx + 440, y: cy - 80, name: 'Ville Ouest'},
+    {x: cx - 400, y: cy + 100, name: 'Ville Centre-Est'},
+    {x: cx + 300, y: cy - 200, name: 'Ville Centre-Ouest'}
   ];
 }
 
-// Create airports based on cities so there are more airports
+// Create airports based on cities so there are more airports - more airports for larger map
 function initAirports(){
   airports.length = 0;
-  // core/central airports (keep old ones too)
-  spawnAirport(cx - 120, cy - 80, 'FX-ONE');
-  spawnAirport(cx + 140, cy + 60, 'FX-TWO');
+  // core/central airports (major hubs)
+  spawnAirport(cx - 240, cy - 160, 'FX-ONE');
+  spawnAirport(cx + 280, cy + 120, 'FX-TWO');
+  spawnAirport(cx, cy, 'FX-HUB');
+  spawnAirport(cx - 500, cy + 200, 'FX-CARGO');
   // city airports
   for(const c of getCities()){ spawnAirport(c.x, c.y, 'APT '+c.name.replace(/\s+/g,'')); }
 }
 initAirports();
 
-// Airspace zones and routes (recomputed on resize)
+// Airspace zones and routes (recomputed on resize) - waypoints for ATC
 const zones = [];
 const routes = [];
+const waypoints = [];
 function initZonesAndRoutes(){
-  zones.length = 0; routes.length = 0;
-  zones.push({x:cx, y:cy-40, r:160, name:'CTR', color:'rgba(45,212,191,0.06)'});
-  zones.push({x:cx+180, y:cy+80, r:110, name:'TMA', color:'rgba(255,90,90,0.05)'});
-  // add small city zones for realism
-  for(const c of getCities()){ zones.push({x:c.x, y:c.y, r:60, name: c.name+' CTR', color:'rgba(200,220,255,0.04)'}); }
-  // example route line
-  routes.push([{x:cx-220,y:cy+10},{x:cx-60,y:cy-40},{x:cx+40,y:cy-20},{x:cx+160,y:cy+60}]);
+  zones.length = 0; routes.length = 0; waypoints.length = 0;
+  // Larger control zones for bigger map
+  zones.push({x:cx, y:cy-80, r:320, name:'CTR PRINCIPAL', color:'rgba(45,212,191,0.08)'});
+  zones.push({x:cx+360, y:cy+160, r:220, name:'TMA EST', color:'rgba(255,90,90,0.06)'});
+  zones.push({x:cx-400, y:cy+200, r:200, name:'TMA CARGO', color:'rgba(255,165,0,0.06)'});
+  // add city zones for realism
+  for(const c of getCities()){ zones.push({x:c.x, y:c.y, r:120, name: c.name+' CTR', color:'rgba(200,220,255,0.05)'}); }
+  // Flight routes (airways)
+  routes.push([{x:cx-440,y:cy+20},{x:cx-120,y:cy-80},{x:cx+80,y:cy-40},{x:cx+320,y:cy+120}]);
+  routes.push([{x:cx-500,y:cy+200},{x:cx-200,y:cy+100},{x:cx+100,y:cy+60},{x:cx+400,y:cy+180}]);
+  routes.push([{x:cx-300,y:cy-200},{x:cx,y:cy-100},{x:cx+200,y:cy-60},{x:cx+500,y:cy+40}]);
+  // Waypoints for navigation
+  waypoints.push({x:cx-300, y:cy-150, name:'WPT1'});
+  waypoints.push({x:cx+200, y:cy+100, name:'WPT2'});
+  waypoints.push({x:cx-100, y:cy+200, name:'WPT3'});
+  waypoints.push({x:cx+350, y:cy-100, name:'WPT4'});
+  waypoints.push({x:cx, y:cy, name:'WPT5'});
 }
 initZonesAndRoutes();
 
@@ -180,7 +215,8 @@ function update(dt){
       if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
       const speed = (p.spd*(dt/1000)/2.5) || 0;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
-      if(p.x<-600||p.x>W+600||p.y<-600||p.y>H+600){ entities.splice(i,1); }
+      // Larger bounds for bigger map
+      if(p.x<-1200||p.x>W+1200||p.y<-1200||p.y>H+1200){ entities.splice(i,1); }
     }
   }
 }
@@ -192,9 +228,9 @@ function drawBackgroundScreen(){
   ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
   // draw simple country blocks as an abstract map background
   ctx.save(); ctx.translate(-cam.x, -cam.y);
-  // draw world map image behind everything (if loaded)
+  // draw world map image behind everything (if loaded) - larger for bigger view
   try{
-    const mapW = Math.max(W,H) * 1.6; const mapH = mapW * 0.5;
+    const mapW = Math.max(W,H) * 2.4; const mapH = mapW * 0.5;
     ctx.globalAlpha = 0.9;
     ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
     ctx.globalAlpha = 1.0;
@@ -203,9 +239,9 @@ function drawBackgroundScreen(){
   // draw city dots
   for(const c of getCities()){ ctx.beginPath(); ctx.fillStyle='rgba(255,230,180,0.9)'; ctx.arc(c.x, c.y, 5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(230,242,255,0.9)'; ctx.font='12px system-ui'; ctx.fillText(c.name, c.x + 10, c.y + 4); }
   ctx.restore();
-  // subtle grid
+  // subtle grid - larger spacing for bigger map
   ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
-  const g = 36;
+  const g = 60; // Larger grid spacing
   for(let x = - (cam.x % g); x < W; x += g){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
   for(let y = - (cam.y % g); y < H; y += g){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
 }
@@ -216,16 +252,37 @@ function drawRadar(){
   zones.forEach(z=>{
     ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,Math.PI*2);
     ctx.fillStyle = z.color; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = 'rgba(230,242,255,0.7)'; ctx.font='12px system-ui'; ctx.fillText(z.name, z.x - 18, z.y - z.r + 18);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(230,242,255,0.8)'; ctx.font='13px system-ui'; ctx.fillText(z.name, z.x - 30, z.y - z.r + 20);
   });
-  // draw route lines
-  ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(45,212,191,0.18)';
-  routes.forEach(route=>{ ctx.beginPath(); route.forEach((pt,i)=>{ if(i===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); }); ctx.stroke(); });
-  // rings
+  // draw route lines (airways)
+  ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(45,212,191,0.25)';
+  routes.forEach(route=>{ 
+    ctx.beginPath(); 
+    route.forEach((pt,i)=>{ 
+      if(i===0) ctx.moveTo(pt.x,pt.y); 
+      else ctx.lineTo(pt.x,pt.y); 
+    }); 
+    ctx.stroke();
+    // Draw route labels
+    if(route.length > 1) {
+      const mid = Math.floor(route.length / 2);
+      ctx.fillStyle = 'rgba(45,212,191,0.4)'; ctx.font='10px system-ui';
+      ctx.fillText('AWY', route[mid].x + 5, route[mid].y - 5);
+    }
+  });
+  // draw waypoints
+  waypoints.forEach(wp=>{
+    ctx.beginPath(); ctx.arc(wp.x, wp.y, 4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,0,0.6)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,0,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,200,0.9)'; ctx.font='11px system-ui';
+    ctx.fillText(wp.name, wp.x + 8, wp.y - 6);
+  });
+  // rings - larger for bigger map
   ctx.save(); ctx.translate(cx,cy);
-  const maxR = Math.min(W,H)/2 - 20;
-  ctx.strokeStyle = 'rgba(200,240,255,0.04)'; ctx.lineWidth = 1;
+  const maxR = Math.min(W,H)/1.5 - 20;
+  ctx.strokeStyle = 'rgba(200,240,255,0.05)'; ctx.lineWidth = 1;
   for(let r= maxR; r>0; r-=maxR/4){ ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); }
   ctx.restore();
 }
@@ -247,6 +304,13 @@ function drawEntities(){
       ctx.drawImage(imgEnemy, dx-10, dy-10, 20,20);
     } else if(p.type==='fighter'){
       ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgFighter, -10, -10, 20,20); ctx.restore();
+    } else if(p.type==='cargo' || p.type==='transport'){
+      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg);
+      // Use preloaded image or create one
+      let cargoImg = imgCargo;
+      if(p.model==='A330F') cargoImg = imgA330;
+      else if(p.model==='B777F') cargoImg = imgB777;
+      ctx.drawImage(cargoImg, -12, -12, 24,24); ctx.restore();
     } else {
       ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgPlane, -10, -10, 20,20); ctx.restore();
     }
@@ -266,11 +330,13 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 
-// initial spawning
-for(let i=0;i<6;i++) spawnPlane('civil');
-setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<8) spawnPlane('civil'); }, 1800);
+// initial spawning - more variety including transport planes
+for(let i=0;i<4;i++) spawnPlane('civil');
+for(let i=0;i<2;i++) spawnPlane('cargo'); // Add cargo planes
+setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<10) spawnPlane('civil'); }, 2000);
+setInterval(()=>{ if(entities.filter(e=>e.type==='cargo'||e.type==='transport').length<4) spawnPlane('cargo'); }, 4000);
 // reduce enemy spawn frequency and max count to make game less hostile
-setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 12000);
+setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 15000);
 
 // ensure the main loop starts immediately (don't wait for image.decode)
 startMainLoop();
@@ -362,7 +428,7 @@ const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventLis
 // loading overlay: hide after small delay when images ready
 function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
 // Ensure promises are real promises (some browsers may not implement decode)
-const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
+const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
   // hide raw loading and show server select UI after brief delay
   setTimeout(()=>{
@@ -377,7 +443,7 @@ setTimeout(()=>{ hideLoading(); const sel = document.getElementById('server-sele
 // wire server selection buttons to actually start the game
 function launchServer(name){ const sel = document.getElementById('server-select'); if(sel) sel.classList.add('hidden'); try{ setStatus('Connecté: '+name); }catch(e){} startMainLoop(); }
 window.addEventListener('DOMContentLoaded', ()=>{
-  const buttons = document.querySelectorAll('.server-btn'); buttons.forEach(b=> b.addEventListener('click', ()=>{ const s = b.dataset.server||'local'; launchServer(s); }));
+  const buttons = document.querySelectorAll('.server-btn-primary, .server-btn'); buttons.forEach(b=> b.addEventListener('click', ()=>{ const s = b.dataset.server||'fx-control'; launchServer(s); }));
 });
 
 // pan / click handling (mouse)

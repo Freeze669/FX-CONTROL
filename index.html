@@ -62,12 +62,21 @@
   <!-- Server selection screen shown after loading -->
   <div id="server-select" class="hidden">
     <div class="server-panel">
-      <h2>Sélection du serveur</h2>
-      <p>Choisissez un serveur pour jouer :</p>
-      <ul class="server-list">
-        <li><button class="server-btn" data-server="local">Serveur local (jouer en local)</button></li>
-      </ul>
-      <div class="server-help">Seul le serveur local est disponible pour l'instant.</div>
+      <div class="server-header">
+        <div class="server-icon">✈</div>
+        <h2>FX CONTROL</h2>
+        <p class="server-subtitle">Centre de contrôle aérien</p>
+      </div>
+      <div class="server-content">
+        <div class="server-status">
+          <span class="status-indicator"></span>
+          <span>Serveur disponible</span>
+        </div>
+        <button class="server-btn-primary" data-server="fx-control">
+          <span class="btn-icon">🚀</span>
+          <span>Se connecter</span>
+        </button>
+      </div>
     </div>
   </div>
 
