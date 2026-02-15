@@ -26,7 +26,6 @@ const cam = {x:0,y:0,zoom:0.4}; // Larger zoom for bigger map view
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
 let _miniatc_loop_started = false;
-let controlledPlane = null; // Currently manually controlled plane
 function startMainLoop(){ if(!_miniatc_loop_started){ _miniatc_loop_started = true; try{ setStatus('Démarrage boucle'); hideLoading(); requestAnimationFrame(loop); setStatus(''); }catch(e){ console.error(e); setStatus('Erreur au démarrage: '+(e.message||e)); } } }
 function resize(){
   const dpr = window.devicePixelRatio || 1;
@@ -49,22 +48,24 @@ let last = performance.now();
 function rand(min,max){return Math.random()*(max-min)+min}
 function callsign(){const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ";return chars[Math.floor(Math.random()*chars.length)]+chars[Math.floor(Math.random()*chars.length)]+Math.floor(rand(10,999)).toString();}
 
-// SVG icon data URLs (simple vector icons)
+// SVG icon data URLs - Realistic white aircraft logos
 function svgDataURL(svg){ return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg); }
-const svgPlane = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23ffffff" d="M2 12l20-9-7 9 7 9z"/></svg>');
-const svgFighter = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23ff4444" d="M2 12l20-9-7 9 7 9z"/></svg>');
-const svgEnemy = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23ff2d55"/></svg>');
+
+// Realistic aircraft silhouettes in white
+const svgPlane = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 30"><path fill="%23ffffff" d="M5 15 L20 8 L75 8 L90 15 L75 22 L20 22 Z M20 10 L70 10 L85 15 L70 20 L20 20 Z M25 12 L30 12 L30 18 L25 18 Z M35 12 L40 12 L40 18 L35 18 Z"/><circle cx="15" cy="15" r="2" fill="%23ffffff"/><circle cx="85" cy="15" r="2" fill="%23ffffff"/></svg>');
+const svgFighter = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 30"><path fill="%23ff4444" d="M10 15 L25 5 L70 5 L85 15 L70 25 L25 25 Z M25 8 L65 8 L80 15 L65 22 L25 22 Z M30 10 L35 10 L35 20 L30 20 Z M40 10 L45 10 L45 20 L40 20 Z"/><circle cx="20" cy="15" r="2" fill="%23ff4444"/><circle cx="80" cy="15" r="2" fill="%23ff4444"/></svg>');
+const svgEnemy = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ff2d55" stroke="%23ffffff" stroke-width="3"/><path fill="%23ffffff" d="M30 50 L50 30 L70 50 L50 70 Z"/></svg>');
 const svgAirport = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="4" rx="1" fill="%232dd4bf"/></svg>');
 
-// model-specific SVGs (nicer images)
-const svgA320 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23e6eef8" stroke="%23263b4f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23263b4f">A320</text></svg>');
-const svgB737 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23fff4e6" stroke="%233b2b1f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%233b2b1f">B737</text></svg>');
-const svgE195 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23e8f6ea" stroke="%23294b2f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23294b2f">E195</text></svg>');
-const svgA321 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23f0e8ff" stroke="%23284a6f"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23284a6f">A321</text></svg>');
+// Realistic model-specific aircraft in white
+const svgA320 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><path fill="%23ffffff" d="M10 20 L25 12 L85 12 L100 20 L85 28 L25 28 Z M25 14 L80 14 L95 20 L80 26 L25 26 Z M30 16 L35 16 L35 24 L30 24 Z M40 16 L45 16 L45 24 L40 24 Z M50 16 L55 16 L55 24 L50 24 Z M60 16 L65 16 L65 24 L60 24 Z M70 16 L75 16 L75 24 L70 24 Z"/><circle cx="20" cy="20" r="2.5" fill="%23ffffff"/><circle cx="100" cy="20" r="2.5" fill="%23ffffff"/></svg>');
+const svgB737 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><path fill="%23ffffff" d="M8 20 L22 11 L88 11 L102 20 L88 29 L22 29 Z M22 13 L85 13 L99 20 L85 27 L22 27 Z M28 15 L32 15 L32 25 L28 25 Z M38 15 L42 15 L42 25 L38 25 Z M48 15 L52 15 L52 25 L48 25 Z M58 15 L62 15 L62 25 L58 25 Z M68 15 L72 15 L72 25 L68 25 Z M78 15 L82 15 L82 25 L78 25 Z"/><circle cx="18" cy="20" r="2.5" fill="%23ffffff"/><circle cx="102" cy="20" r="2.5" fill="%23ffffff"/></svg>');
+const svgE195 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 35"><path fill="%23ffffff" d="M8 17.5 L20 10 L70 10 L82 17.5 L70 25 L20 25 Z M20 12 L68 12 L80 17.5 L68 23 L20 23 Z M25 14 L30 14 L30 21 L25 21 Z M35 14 L40 14 L40 21 L35 21 Z M45 14 L50 14 L50 21 L45 21 Z M55 14 L60 14 L60 21 L55 21 Z"/><circle cx="15" cy="17.5" r="2" fill="%23ffffff"/><circle cx="85" cy="17.5" r="2" fill="%23ffffff"/></svg>');
+const svgA321 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 40"><path fill="%23ffffff" d="M10 20 L26 11 L94 11 L110 20 L94 29 L26 29 Z M26 13 L90 13 L106 20 L90 27 L26 27 Z M32 15 L37 15 L37 25 L32 25 Z M42 15 L47 15 L47 25 L42 25 Z M52 15 L57 15 L57 25 L52 25 Z M62 15 L67 15 L67 25 L62 25 Z M72 15 L77 15 L77 25 L72 25 Z M82 15 L87 15 L87 25 L82 25 Z"/><circle cx="20" cy="20" r="2.5" fill="%23ffffff"/><circle cx="110" cy="20" r="2.5" fill="%23ffffff"/></svg>');
 // Transport/Cargo planes
-const svgCargo = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="18" width="52" height="28" fill="%23ffa500" stroke="%23404040"/><text x="32" y="38" font-size="9" text-anchor="middle" fill="%23404040">CARGO</text></svg>');
-const svgA330 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23c8e6ff" stroke="%231a3a5a"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%231a3a5a">A330</text></svg>');
-const svgB777 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="6" ry="6" x="6" y="20" width="52" height="24" fill="%23ffe6cc" stroke="%23404020"/><text x="32" y="38" font-size="10" text-anchor="middle" fill="%23404020">B777</text></svg>');
+const svgCargo = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 45"><path fill="%23ffffff" d="M8 22.5 L22 10 L88 10 L102 22.5 L88 35 L22 35 Z M22 13 L85 13 L99 22.5 L85 32 L22 32 Z M28 16 L32 16 L32 29 L28 29 Z M38 16 L42 16 L42 29 L38 29 Z M48 16 L52 16 L52 29 L48 29 Z M58 16 L62 16 L62 29 L58 29 Z M68 16 L72 16 L72 29 L68 29 Z M78 16 L82 16 L82 29 L78 29 Z"/><circle cx="18" cy="22.5" r="2.5" fill="%23ffffff"/><circle cx="102" cy="22.5" r="2.5" fill="%23ffffff"/></svg>');
+const svgA330 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 45"><path fill="%23ffffff" d="M10 22.5 L28 10 L102 10 L120 22.5 L102 35 L28 35 Z M28 13 L98 13 L116 22.5 L98 32 L28 32 Z M34 16 L39 16 L39 29 L34 29 Z M44 16 L49 16 L49 29 L44 29 Z M54 16 L59 16 L59 29 L54 29 Z M64 16 L69 16 L69 29 L64 29 Z M74 16 L79 16 L79 29 L74 29 Z M84 16 L89 16 L89 29 L84 29 Z"/><circle cx="22" cy="22.5" r="3" fill="%23ffffff"/><circle cx="118" cy="22.5" r="3" fill="%23ffffff"/></svg>');
+const svgB777 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 45"><path fill="%23ffffff" d="M10 22.5 L30 9 L110 9 L130 22.5 L110 36 L30 36 Z M30 12 L108 12 L128 22.5 L108 33 L30 33 Z M36 15 L42 15 L42 30 L36 30 Z M48 15 L54 15 L54 30 L48 30 Z M60 15 L66 15 L66 30 L60 30 Z M72 15 L78 15 L78 30 L72 30 Z M84 15 L90 15 L90 30 L84 30 Z M96 15 L102 15 L102 30 L96 30 Z"/><circle cx="24" cy="22.5" r="3" fill="%23ffffff"/><circle cx="126" cy="22.5" r="3" fill="%23ffffff"/></svg>');
 
 const imgPlane = new Image(); imgPlane.src = svgPlane;
 const imgFighter = new Image(); imgFighter.src = svgFighter;
@@ -250,18 +251,44 @@ function update(dt){
       }
     } else {
       // normal movement for civil/enemy
-      // If plane is manually controlled, movement is handled by control buttons
-      if(p._manuallyControlled && controlledPlane === p.id){
-        // Manual control - just update position based on current heading and speed
-        const speed = (p.spd*(dt/1000)/2.5) || 0;
-        p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
-      } else {
-        // Automatic movement
-        // if returning to airport, steer to nearest airport
-        if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
-        const speed = (p.spd*(dt/1000)/2.5) || 0;
-        p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      // if returning to airport, steer to nearest airport
+      if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
+      const speed = (p.spd*(dt/1000)/2.5) || 0;
+      p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      
+      // Check for crashes - collisions with other planes
+      for(let j=0; j<entities.length; j++){
+        if(i===j || entities[j].type==='fighter' && entities[j].targetId) continue;
+        const other = entities[j];
+        const dist = Math.hypot(p.x-other.x, p.y-other.y);
+        // Check if same altitude (within 2000ft)
+        const altDiff = Math.abs(p.alt - other.alt);
+        if(dist < 25 && altDiff < 2000 && !p._crashed && !other._crashed){
+          // CRASH! Both planes crash
+          p._crashed = true;
+          other._crashed = true;
+          p._crashTime = performance.now();
+          other._crashTime = performance.now();
+          showNotification('💥 COLLISION: ' + p.call + ' et ' + other.call, 'warning', 5000);
+          // Remove both planes after a short delay
+          setTimeout(()=>{
+            const idx1 = entities.indexOf(p); if(idx1>=0) entities.splice(idx1,1);
+            const idx2 = entities.indexOf(other); if(idx2>=0) entities.splice(idx2,1);
+          }, 2000);
+        }
       }
+      
+      // Random mechanical failure (very rare - 0.01% chance per frame)
+      if(!p._crashed && Math.random() < 0.0001 && p.type !== 'fighter' && p.type !== 'enemy'){
+        p._crashed = true;
+        p._crashTime = performance.now();
+        p._crashReason = 'Panne mécanique';
+        showNotification('⚠️ CRASH: ' + p.call + ' - ' + p._crashReason, 'warning', 5000);
+        setTimeout(()=>{
+          const idx = entities.indexOf(p); if(idx>=0) entities.splice(idx,1);
+        }, 3000);
+      }
+      
       // Larger bounds for bigger map
       if(p.x<-2000||p.x>W+2000||p.y<-2000||p.y>H+2000){ entities.splice(i,1); }
     }
@@ -344,6 +371,19 @@ function drawEntities(){
     const dx = p.x, dy = p.y;
     // draw trajectory
     if(showTrajectory && p.history && p.history.length>1){ ctx.beginPath(); ctx.moveTo(p.history[0].x,p.history[0].y); for(let i=1;i<p.history.length;i++){ ctx.lineTo(p.history[i].x,p.history[i].y); } ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.stroke(); }
+    
+    // Draw crash indicator
+    if(p._crashed){
+      ctx.beginPath(); ctx.arc(dx,dy,35,0,Math.PI*2); ctx.strokeStyle='rgba(255,0,0,0.8)'; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle='rgba(255,0,0,0.9)'; ctx.font='12px system-ui'; ctx.fillText('💥 CRASH', dx-25, dy-25);
+      // Draw explosion effect
+      const timeSinceCrash = performance.now() - (p._crashTime || 0);
+      if(timeSinceCrash < 2000){
+        const alpha = 1 - (timeSinceCrash / 2000);
+        ctx.beginPath(); ctx.arc(dx,dy,20 + timeSinceCrash/50,0,Math.PI*2); ctx.fillStyle=`rgba(255,165,0,${alpha*0.5})`; ctx.fill();
+      }
+    }
+    
     if(p.selected){ // halo
       ctx.beginPath(); ctx.arc(dx,dy,26,0,Math.PI*2); ctx.strokeStyle='rgba(255,206,102,0.25)'; ctx.lineWidth=3; ctx.stroke();
     }
@@ -374,18 +414,6 @@ function drawEntities(){
 function loop(now){
   const dt = now - last; last = now;
   update(dt);
-  
-  // Auto-follow controlled plane with camera
-  if(controlledPlane){
-    const controlled = entities.find(e=>e.id===controlledPlane);
-    if(controlled){
-      // Smooth camera follow
-      const targetX = controlled.x - cx;
-      const targetY = controlled.y - cy;
-      cam.x += (targetX - cam.x) * 0.1;
-      cam.y += (targetY - cam.y) * 0.1;
-    }
-  }
   
   drawBackgroundScreen();
   ctx.save(); ctx.translate(-cam.x, -cam.y);
@@ -564,28 +592,6 @@ const _elSendController = document.getElementById('send-controller'); if(_elSend
   });
   info.textContent = 'Contrôleurs envoyés - ' + enemies.length + ' avion(s) suspect(s) alerté(s)';
   setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',2000);
-});
-
-// Take control button
-const _elTakeControl = document.getElementById('take-control'); if(_elTakeControl) _elTakeControl.addEventListener('click', ()=>{
-  const p = entities.find(x=>x.selected);
-  if(!p){
-    info.textContent = 'Sélectionnez un avion d\'abord';
-    setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500);
-    return;
-  }
-  // Release previous control
-  if(controlledPlane){
-    const prev = entities.find(e=>e.id===controlledPlane);
-    if(prev) prev._manuallyControlled = false;
-  }
-  // Take control of selected plane
-  p._manuallyControlled = true;
-  controlledPlane = p.id;
-  p.returning = false; // Cancel any return orders
-  showNotification('✈️ Contrôle pris: ' + p.call, 'info', 3000);
-  info.textContent = 'Vous contrôlez maintenant ' + p.call;
-  setTimeout(()=>info.textContent='Utilisez les boutons pour piloter',2000);
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
