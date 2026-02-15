@@ -338,8 +338,8 @@ setInterval(()=>{ if(entities.filter(e=>e.type==='cargo'||e.type==='transport').
 // reduce enemy spawn frequency and max count to make game less hostile
 setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 15000);
 
-// ensure the main loop starts immediately (don't wait for image.decode)
-startMainLoop();
+// Don't start the main loop automatically - wait for user to click the server button
+// startMainLoop(); // Commented out - will be started when user clicks the server button
 
 // UI and interaction
 const info = document.getElementById('info');
@@ -441,10 +441,35 @@ Promise.all(decodes).finally(()=>{
 setTimeout(()=>{ hideLoading(); const sel = document.getElementById('server-select'); if(sel) sel.classList.remove('hidden'); }, 5000);
 
 // wire server selection buttons to actually start the game
-function launchServer(name){ const sel = document.getElementById('server-select'); if(sel) sel.classList.add('hidden'); try{ setStatus('Connecté: '+name); }catch(e){} startMainLoop(); }
-window.addEventListener('DOMContentLoaded', ()=>{
-  const buttons = document.querySelectorAll('.server-btn-primary, .server-btn'); buttons.forEach(b=> b.addEventListener('click', ()=>{ const s = b.dataset.server||'fx-control'; launchServer(s); }));
-});
+function launchServer(name){ 
+  const sel = document.getElementById('server-select'); 
+  if(sel) sel.classList.add('hidden'); 
+  // Show the game canvas and HUD
+  const gameMain = document.getElementById('game-main');
+  if(gameMain) gameMain.classList.remove('hidden');
+  try{ setStatus('Connecté: '+name); }catch(e){} 
+  startMainLoop(); 
+}
+
+// Attach event listeners to server buttons - try both DOMContentLoaded and immediate execution
+function attachServerButtonListeners(){
+  const buttons = document.querySelectorAll('.server-btn-primary, .server-btn'); 
+  buttons.forEach(b=> {
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const s = b.dataset.server||'fx-control'; 
+      launchServer(s); 
+    });
+  });
+}
+
+// Try to attach listeners immediately (if DOM is ready) or wait for DOMContentLoaded
+if(document.readyState === 'loading'){
+  window.addEventListener('DOMContentLoaded', attachServerButtonListeners);
+} else {
+  attachServerButtonListeners();
+}
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
