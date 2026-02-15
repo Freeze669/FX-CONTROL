@@ -112,6 +112,9 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.destination = 'Inconnu';
   }
   
+  // Airlines list
+  const airlines = ['Air France', 'Lufthansa', 'British Airways', 'Emirates', 'KLM', 'Iberia', 'Swiss', 'Austrian', 'SAS', 'TAP', 'Alitalia', 'Aegean'];
+  
   // assign model and tweak speeds
   if(type==='fighter'){ 
     base.spd = 380; 
@@ -120,6 +123,10 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.img = svgFighter;
     base.origin = 'Base Militaire';
     base.destination = 'Patrouille';
+    base.passengers = 0;
+    base.weight = '12 t';
+    base.airline = 'Armée de l\'Air';
+    base.fuel = Math.round(rand(60, 100)) + '%';
   }
   else if(type==='enemy'){ 
     base.spd = rand(160,300); 
@@ -127,6 +134,10 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.img = svgEnemy;
     base.origin = 'Inconnu';
     base.destination = 'Inconnu';
+    base.passengers = '?';
+    base.weight = '?';
+    base.airline = 'Inconnu';
+    base.fuel = '?';
   }
   else if(type==='cargo' || type==='transport'){ 
     base.spd = rand(140,200); // Cargo planes are slower
@@ -137,6 +148,13 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     else if(base.model==='A330F') base.img = svgA330;
     else if(base.model==='B777F') base.img = svgB777;
     else base.img = svgCargo;
+    
+    // Cargo specific data
+    if(base.model==='A330F'){ base.passengers = 0; base.weight = Math.round(rand(45, 70)) + ' t'; }
+    else if(base.model==='B777F'){ base.passengers = 0; base.weight = Math.round(rand(100, 140)) + ' t'; }
+    else { base.passengers = 0; base.weight = Math.round(rand(20, 50)) + ' t'; }
+    base.airline = airlines[Math.floor(Math.random()*airlines.length)] + ' Cargo';
+    base.fuel = Math.round(rand(40, 90)) + '%';
   }
   else { // civil passenger
     const civilModels = ['A320','B737','E195','A321','A330','B777'];
@@ -149,6 +167,18 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     else if(base.model==='A330') base.img = svgA330;
     else if(base.model==='B777') base.img = svgB777;
     else base.img = svgPlane;
+    
+    // Passenger and weight data by model
+    if(base.model==='A320'){ base.passengers = Math.round(rand(120, 180)); base.weight = Math.round(rand(35, 50)) + ' t'; }
+    else if(base.model==='B737'){ base.passengers = Math.round(rand(130, 190)); base.weight = Math.round(rand(40, 55)) + ' t'; }
+    else if(base.model==='E195'){ base.passengers = Math.round(rand(100, 120)); base.weight = Math.round(rand(25, 35)) + ' t'; }
+    else if(base.model==='A321'){ base.passengers = Math.round(rand(180, 240)); base.weight = Math.round(rand(50, 65)) + ' t'; }
+    else if(base.model==='A330'){ base.passengers = Math.round(rand(250, 350)); base.weight = Math.round(rand(120, 150)) + ' t'; }
+    else if(base.model==='B777'){ base.passengers = Math.round(rand(300, 450)); base.weight = Math.round(rand(150, 200)) + ' t'; }
+    else { base.passengers = Math.round(rand(100, 200)); base.weight = Math.round(rand(30, 60)) + ' t'; }
+    
+    base.airline = airlines[Math.floor(Math.random()*airlines.length)];
+    base.fuel = Math.round(rand(50, 95)) + '%';
   }
   
   // record spawn time to avoid immediate interception on spawn
@@ -278,8 +308,8 @@ function update(dt){
         }
       }
       
-      // Random mechanical failure (very rare - 0.01% chance per frame)
-      if(!p._crashed && Math.random() < 0.0001 && p.type !== 'fighter' && p.type !== 'enemy'){
+      // Random mechanical failure (very rare - 0.001% chance per frame, much less frequent)
+      if(!p._crashed && Math.random() < 0.00001 && p.type !== 'fighter' && p.type !== 'enemy'){
         p._crashed = true;
         p._crashTime = performance.now();
         p._crashReason = 'Panne mécanique';
@@ -438,14 +468,7 @@ startMainLoop();
 const info = document.getElementById('info');
 const controls = document.getElementById('controls');
 const selectedDiv = document.getElementById('selected');
-function selectEntity(p){ 
-  // Release control if selecting different plane
-  if(p && controlledPlane && controlledPlane !== p.id){
-    const prev = entities.find(e=>e.id===controlledPlane);
-    if(prev) prev._manuallyControlled = false;
-    controlledPlane = null;
-  }
-  entities.forEach(x=>x.selected=false); 
+function selectEntity(p){ entities.forEach(x=>x.selected=false); 
   if(p){ p.selected=true; controls.classList.remove('hidden');
     selectedDiv.innerHTML = '<strong>'+p.call+'</strong><br>Type: '+(p.type||'civil')+' • ALT: '+Math.round(p.alt)+' ft<br>SPD: '+Math.round(p.spd)+' kt • HDG: '+Math.round((p.hdg*180/Math.PI+360)%360)+'°';
     // update top-right detailed info
@@ -474,6 +497,10 @@ function selectEntity(p){
       const altEl = document.getElementById('info-alt'); if(altEl) altEl.innerHTML = '<strong>Altitude:</strong> ' + Math.round(p.alt) + ' ft';
       const spdEl = document.getElementById('info-spd'); if(spdEl) spdEl.innerHTML = '<strong>Vitesse:</strong> ' + Math.round(p.spd) + ' kt';
       const hdgEl = document.getElementById('info-hdg'); if(hdgEl) hdgEl.innerHTML = '<strong>Cap:</strong> ' + Math.round((p.hdg*180/Math.PI+360)%360) + '°';
+      const passEl = document.getElementById('info-passengers'); if(passEl) passEl.innerHTML = '<strong>Passagers:</strong> ' + (p.passengers !== undefined ? p.passengers : '—');
+      const weightEl = document.getElementById('info-weight'); if(weightEl) weightEl.innerHTML = '<strong>Poids:</strong> ' + (p.weight || '—');
+      const airlineEl = document.getElementById('info-airline'); if(airlineEl) airlineEl.innerHTML = '<strong>Compagnie:</strong> ' + (p.airline || '—');
+      const fuelEl = document.getElementById('info-fuel'); if(fuelEl) fuelEl.innerHTML = '<strong>Carburant:</strong> ' + (p.fuel || '—');
     }catch(e){}
     info.textContent = ''
   } else { 
