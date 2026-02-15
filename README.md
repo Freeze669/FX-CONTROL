@@ -29,6 +29,26 @@ Fichier autonome (téléchargeable)
 - Pour permettre à un iPhone d'ouvrir directement : téléchargez `miniatc-standalone.html` depuis Safari ou transférez-le dans l'app "Fichiers". Ouvrez-le dans Safari (taper sur le fichier) — le jeu s'exécutera directement.
 - Pour une expérience plein écran : ouvrir le fichier dans Safari puis utiliser Partager → "Ajouter à l'écran d'accueil".
 
+Changements récents:
+- Ajout d'icônes vectorielles (SVG) pour avions / fighters / aéroports (meilleure lisibilité que des emojis).
+- Amélioration de la sélection tactile: zone de sélection agrandie et priorité visuelle.
+- `Airports`: tapez sur un aéroport pour lancer un avion civil depuis cet aéroport.
+- `Fighters`: sélectionnez un avion ennemi ou allié puis utilisez «Dispatch Fighter» pour envoyer un chasseur depuis l'aéroport le plus proche. Les fighters tentent d'intercepter (et retirent l'ennemi).
+- `Enemies`: des avions ennemis apparaissent périodiquement (rouges). Vous pouvez intercepter.
+- `Loading`: écran de chargement au démarrage pour éviter l'affichage vide.
+
+Test rapide:
+1. Démarrer un serveur local (ou ouvrir `miniatc-standalone.html` dans Safari via HTTP):
+```powershell
+python -m http.server 8000
+```
+2. Sur iPhone: ouvrez `http://<votre-ip>:8000/` puis `miniatc-standalone.html` ou `index.html`.
+
+Prochaines améliorations possibles (je peux les faire):
+- ajouter icônes iOS / splash screens dans le ZIP
+- système de scoring + missions (escortes, interceptions)
+- commandes radio textuelles (simuler VATSIM)
+- sauvegarde / relecture de scénarios
 Remarques :
 - Certaines fonctions PWA (service worker, cache avancé, ajout automatique à l'écran d'accueil) nécessitent un serveur HTTPS et ne fonctionnent pas correctement depuis un fichier local. Cette version autonome inclut tout le CSS/JS inline pour être exécutée directement.
 - Voulez-vous que je crée un ZIP téléchargeable contenant `miniatc-standalone.html` et des icônes pour simplifier la distribution ?
