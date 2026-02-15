@@ -24,9 +24,10 @@
     </div>
   </aside>
 
-  <main class="hidden" id="game-main">
+  <main id="game-main">
     <canvas id="radar"></canvas>
     <div id="hud">
+      <div id="notifications"></div>
       <div id="info">Tapez un avion pour le sélectionner</div>
       <div id="controls" class="hidden">
         <div id="selected"></div>
@@ -47,7 +48,10 @@
           <button id="alert">Alert / Return</button>
         </div>
         <div class="btn-row">
+          <button id="send-controller">Send Controller</button>
           <button id="destroy">Destroy</button>
+        </div>
+        <div class="btn-row">
           <button id="traj">Toggle Trajectory</button>
         </div>
       </div>
@@ -59,26 +63,6 @@
     <div class="loading-text">Chargement…</div>
   </div>
 
-  <!-- Server selection screen shown after loading -->
-  <div id="server-select" class="hidden">
-    <div class="server-panel">
-      <div class="server-header">
-        <div class="server-icon">✈</div>
-        <h2>FX CONTROL</h2>
-        <p class="server-subtitle">Centre de contrôle aérien</p>
-      </div>
-      <div class="server-content">
-        <div class="server-status">
-          <span class="status-indicator"></span>
-          <span>Serveur disponible</span>
-        </div>
-        <button class="server-btn-primary" data-server="fx-control" id="connect-btn">
-          <span class="btn-icon">🚀</span>
-          <span>Se connecter</span>
-        </button>
-      </div>
-    </div>
-  </div>
 
   <footer>
     <small>Optimisé pour mobile — ajoutez à l'écran d'accueil sur iPhone</small>

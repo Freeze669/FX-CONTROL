@@ -5,8 +5,22 @@ const ctx = canvas.getContext('2d');
 const _statusEl = document.getElementById && document.getElementById('info');
 function setStatus(msg){ try{ if(_statusEl) _statusEl.textContent = msg; }catch(e){} console.log('[MiniATC] '+msg); }
 setStatus('Initialisation...');
-window.addEventListener('error', ev=>{ console.error(ev.error||ev.message); try{ if(_statusEl) _statusEl.textContent = 'Erreur: '+(ev.error?.message||ev.message); }catch(e){} });
+window.addEventListener('error', ev=>{ console.error(ev.error||ev.message); try{ if(_statusEl) _statusEl.textContent = 'Erreur: '+(ev.error?.message||ev.message); }catch(e){} }); 
 window.addEventListener('unhandledrejection', ev=>{ console.error('UnhandledRejection', ev.reason); try{ if(_statusEl) _statusEl.textContent = 'Erreur promise: '+(ev.reason?.message||String(ev.reason)); }catch(e){} });
+
+// Notification system
+function showNotification(message, type='info', duration=5000){
+  const notifEl = document.getElementById('notifications');
+  if(!notifEl) return;
+  const notif = document.createElement('div');
+  notif.className = 'notification ' + type;
+  notif.textContent = message;
+  notifEl.appendChild(notif);
+  setTimeout(()=>{
+    notif.style.animation = 'slideIn 0.3s ease reverse';
+    setTimeout(()=>notif.remove(), 300);
+  }, duration);
+}
 // camera for pan (world coordinates) - declared early so resize() can use it
 const cam = {x:0,y:0,zoom:0.6}; // Reduced zoom for larger map view
 let isPanning = false, panLast = null;
@@ -199,15 +213,12 @@ function update(dt){
       let diff = desired - p.hdg; while(diff>Math.PI) diff-=Math.PI*2; while(diff<-Math.PI) diff+=Math.PI*2; p.hdg += diff*0.12;
       const speed = p.spd*(dt/1000)/2.5;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
-      // if in intercept mode and close enough, destroy target
-      // but avoid immediate destroy right after spawn (spawn grace period)
-      if(p._mode==='intercept' && dist<26){
-        const nowt = performance.now();
-        const grace = 1200; // ms after spawn before interception allowed
-        if((!p._spawnTime) || (nowt - p._spawnTime) > grace){
-          const ti = entities.indexOf(target); if(ti>=0) entities.splice(ti,1);
-          entities.splice(i,1);
-        }
+      // Fighters now only follow - they don't destroy automatically
+      // Destruction must be done manually via the Destroy button
+      // Mark target as being tracked
+      if(!target._beingTracked){
+        target._beingTracked = true;
+        target._trackedBy = p.id;
       }
     } else {
       // normal movement for civil/enemy
@@ -302,6 +313,11 @@ function drawEntities(){
     }
     if(p.type==='enemy'){
       ctx.drawImage(imgEnemy, dx-10, dy-10, 20,20);
+      // Draw alert indicator if alerted
+      if(p._alerted){
+        ctx.beginPath(); ctx.arc(dx,dy,28,0,Math.PI*2); ctx.strokeStyle='rgba(255,165,0,0.6)'; ctx.lineWidth=2; ctx.stroke();
+        ctx.fillStyle='rgba(255,165,0,0.9)'; ctx.font='10px system-ui'; ctx.fillText('⚠️ ALERTE', dx-20, dy-18);
+      }
     } else if(p.type==='fighter'){
       ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgFighter, -10, -10, 20,20); ctx.restore();
     } else if(p.type==='cargo' || p.type==='transport'){
@@ -338,8 +354,8 @@ setInterval(()=>{ if(entities.filter(e=>e.type==='cargo'||e.type==='transport').
 // reduce enemy spawn frequency and max count to make game less hostile
 setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 15000);
 
-// Don't start the main loop automatically - wait for user to click the server button
-// startMainLoop(); // Commented out - will be started when user clicks the server button
+// Start the main loop automatically
+startMainLoop();
 
 // UI and interaction
 const info = document.getElementById('info');
@@ -420,7 +436,28 @@ const _elAlert = document.getElementById('alert'); if(_elAlert) _elAlert.addEven
 
 const _elDispatch = document.getElementById('dispatch'); if(_elDispatch) _elDispatch.addEventListener('click', ()=>{
   const p = entities.find(x=>x.selected); if(!p) return; let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
-  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='intercept'; info.textContent='Fighter lancé depuis '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='escort'; info.textContent='Fighter lancé depuis '+nearest.name; showNotification('Fighter envoyé pour escorter ' + p.call, 'info', 3000); setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+});
+
+// Send controller to alert suspect aircraft
+const _elSendController = document.getElementById('send-controller'); if(_elSendController) _elSendController.addEventListener('click', ()=>{
+  // Find all enemy aircraft
+  const enemies = entities.filter(e => e.type === 'enemy');
+  if(enemies.length === 0){
+    info.textContent = 'Aucun avion suspect détecté';
+    setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500);
+    return;
+  }
+  // Alert all enemies
+  enemies.forEach(enemy => {
+    if(!enemy._alerted){
+      enemy._alerted = true;
+      enemy._alertTime = performance.now();
+      showNotification('⚠️ Avion suspect alerté: ' + enemy.call, 'warning', 4000);
+    }
+  });
+  info.textContent = 'Contrôleurs envoyés - ' + enemies.length + ' avion(s) suspect(s) alerté(s)';
+  setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',2000);
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
@@ -430,44 +467,16 @@ function hideLoading(){ const L = document.getElementById('loading'); if(L){ try
 // Ensure promises are real promises (some browsers may not implement decode)
 const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
-  // hide raw loading and show server select UI after brief delay
+  // hide raw loading
   setTimeout(()=>{
     hideLoading();
-    const sel = document.getElementById('server-select'); 
-    if(sel) {
-      sel.classList.remove('hidden');
-    }
   }, 300);
 });
-// Safety: if something blocks, forcibly hide loading and show server select after 5s
+// Safety: if something blocks, forcibly hide loading after 5s
 setTimeout(()=>{ 
   hideLoading(); 
-  const sel = document.getElementById('server-select'); 
-  if(sel) {
-    sel.classList.remove('hidden');
-  }
 }, 5000);
 
-// wire server selection buttons to actually start the game
-function launchServer(name){ 
-  const sel = document.getElementById('server-select'); 
-  if(sel) sel.classList.add('hidden'); 
-  // Show the game canvas and HUD
-  const gameMain = document.getElementById('game-main');
-  if(gameMain) gameMain.classList.remove('hidden');
-  try{ setStatus('Connecté: '+name); }catch(e){} 
-  startMainLoop(); 
-}
-
-// Simple button click handler
-document.addEventListener('DOMContentLoaded', function(){
-  const connectBtn = document.getElementById('connect-btn');
-  if(connectBtn){
-    connectBtn.onclick = function(){
-      launchServer('fx-control');
-    };
-  }
-});
 
 // pan / click handling (mouse)
 let mouseDown = false, mouseStart = null, mousePanned = false;
