@@ -52,6 +52,22 @@ const imgFighter = new Image(); imgFighter.src = svgFighter;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
 const imgAirport = new Image(); imgAirport.src = svgAirport;
 
+// stylized world map SVG as background (low-detail, abstract continents)
+const svgWorld = svgDataURL(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <rect width="100%" height="100%" fill="none"/>
+  <g fill="%231c3a4a" opacity="0.55">
+    <path d="M120 140c30-20 80-40 140-30 40 7 90 35 120 20 20-10 40-40 80-46 30-5 70 6 100 22 18 10 32 30 40 50 12 30 4 70-18 92-28 28-76 36-120 30-46-6-92-30-140-30-46 0-86 18-124 6-28-9-44-34-42-64 2-24 10-48 26-62z"/>
+    <path d="M20 260c20-30 70-50 120-44 34 4 76 28 110 30 40 2 84-14 120-6 36 8 68 36 92 58 22 20 30 46 26 76-6 46-56 74-102 80-46 6-98-6-140-24-40-16-82-44-120-74-30-24-54-58-56-96-1-16 2-30 12-36z"/>
+    <path d="M480 40c60 6 120 36 170 70 40 28 70 66 82 106 10 34 2 76-20 104-28 36-78 54-124 52-40-2-84-22-120-44-34-20-68-48-92-82-22-30-28-70-10-104 18-34 56-64 134-102z"/>
+  </g>
+  <g fill="%23dbeff7" opacity="0.07">
+    <circle cx="200" cy="100" r="6" />
+    <circle cx="420" cy="220" r="6" />
+    <circle cx="560" cy="70" r="6" />
+  </g>
+</svg>`);
+const imgWorldMap = new Image(); imgWorldMap.src = svgWorld;
+
 function spawnPlane(type='civil', x=null, y=null, hdg=null){
   const angle = rand(0,Math.PI*2);
   const r = Math.max(W,H)/2 + 60;
@@ -166,6 +182,13 @@ function drawBackgroundScreen(){
   ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
   // draw simple country blocks as an abstract map background
   ctx.save(); ctx.translate(-cam.x, -cam.y);
+  // draw world map image behind everything (if loaded)
+  try{
+    const mapW = Math.max(W,H) * 1.6; const mapH = mapW * 0.5;
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
+    ctx.globalAlpha = 1.0;
+  }catch(e){}
   for(const c of countries){ ctx.fillStyle = c.color; ctx.fillRect(c.x, c.y, c.w, c.h); ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(c.x, c.y, c.w, c.h); ctx.fillStyle = 'rgba(230,242,255,0.04)'; ctx.font='11px system-ui'; ctx.fillText(c.name, c.x+8, c.y+14); }
   // draw city dots
   for(const c of getCities()){ ctx.beginPath(); ctx.fillStyle='rgba(255,230,180,0.9)'; ctx.arc(c.x, c.y, 5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(230,242,255,0.9)'; ctx.font='12px system-ui'; ctx.fillText(c.name, c.x + 10, c.y + 4); }
@@ -298,9 +321,19 @@ const _elDesc = document.getElementById('desc'); if(_elDesc) _elDesc.addEventLis
 
 // Controls wired to static buttons in the HTML
 const _elDestroy = document.getElementById('destroy'); if(_elDestroy) _elDestroy.addEventListener('click', ()=>{
-  const p = entities.find(x=>x.selected); if(!p) return; // if fighter selected with target, destroy target
-  if(p.type==='fighter' && p.targetId){ const target = entities.find(e=>e.id===p.targetId); if(target){ const ti=entities.indexOf(target); if(ti>=0) entities.splice(ti,1); info.textContent='Cible détruite'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); } return; }
-  const idx = entities.indexOf(p); if(idx>=0){ entities.splice(idx,1); info.textContent='Avion détruit'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
+  const p = entities.find(x=>x.selected); if(!p) return;
+  // Only allow destruction if a fighter has been dispatched to target this plane
+  if(p.type !== 'fighter'){
+    const fighter = entities.find(e=>e.type==='fighter' && e.targetId===p.id);
+    if(!fighter){ info.textContent = 'Impossible: envoyer d\'abord un avion de chasse'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); return; }
+    // if there is a fighter targeting, allow manual destroy (simulate fighter interception)
+    const idx = entities.indexOf(p); if(idx>=0){ entities.splice(idx,1); info.textContent='Cible neutralisée par le chasseur'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
+    return;
+  }
+  // if selected is a fighter, allow destroying its target or self
+  if(p.type==='fighter' && p.targetId){ const target = entities.find(e=>e.id===p.targetId); if(target){ const ti=entities.indexOf(target); if(ti>=0) entities.splice(ti,1); info.textContent='Cible détruite par le chasseur'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); return; } }
+  // otherwise remove the fighter itself
+  const idxf = entities.indexOf(p); if(idxf>=0){ entities.splice(idxf,1); info.textContent='Avion de chasse retiré'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
 });
 
 const _elAlert = document.getElementById('alert'); if(_elAlert) _elAlert.addEventListener('click', ()=>{
@@ -311,7 +344,7 @@ const _elAlert = document.getElementById('alert'); if(_elAlert) _elAlert.addEven
 
 const _elDispatch = document.getElementById('dispatch'); if(_elDispatch) _elDispatch.addEventListener('click', ()=>{
   const p = entities.find(x=>x.selected); if(!p) return; let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
-  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='follow'; info.textContent='Fighter lancé depuis '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+  if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='intercept'; info.textContent='Fighter lancé depuis '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
