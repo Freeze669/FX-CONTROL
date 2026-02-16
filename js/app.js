@@ -114,6 +114,10 @@ const imgFighter = new Image(); imgFighter.src = svgFighter;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
 const imgAirport = new Image(); imgAirport.src = svgAirport;
 const imgCargo = new Image(); imgCargo.src = svgCargo;
+const imgA320 = new Image(); imgA320.src = svgA320;
+const imgB737 = new Image(); imgB737.src = svgB737;
+const imgE195 = new Image(); imgE195.src = svgE195;
+const imgA321 = new Image(); imgA321.src = svgA321;
 const imgA330 = new Image(); imgA330.src = svgA330;
 const imgB777 = new Image(); imgB777.src = svgB777;
 const imgA350 = new Image(); imgA350.src = svgA350;
@@ -121,6 +125,226 @@ const imgB787 = new Image(); imgB787.src = svgB787;
 const imgB747 = new Image(); imgB747.src = svgB747;
 const imgATR72 = new Image(); imgATR72.src = svgATR72;
 const imgC172 = new Image(); imgC172.src = svgC172;
+
+const aircraftImageByModel = {
+  'A320': imgA320,
+  'B737': imgB737,
+  'E195': imgE195,
+  'A321': imgA321,
+  'A330': imgA330,
+  'B777': imgB777,
+  'A350': imgA350,
+  'B787': imgB787,
+  'B747': imgB747,
+  'ATR72': imgATR72,
+  'C172': imgC172,
+  'A330F': imgA330,
+  'B777F': imgB777,
+  'Cargo': imgCargo,
+  'KC-135': imgCargo,
+  'F-16': imgFighter,
+  'Unknown': imgEnemy
+};
+
+const aircraftVisualProfile = {
+  'A320': {w: 34, h: 16},
+  'B737': {w: 35, h: 16},
+  'E195': {w: 31, h: 15},
+  'A321': {w: 38, h: 16},
+  'A330': {w: 44, h: 19},
+  'B777': {w: 48, h: 20},
+  'A350': {w: 50, h: 21},
+  'B787': {w: 47, h: 20},
+  'B747': {w: 54, h: 22},
+  'ATR72': {w: 30, h: 15},
+  'C172': {w: 24, h: 12},
+  'A330F': {w: 45, h: 19},
+  'B777F': {w: 50, h: 21},
+  'Cargo': {w: 38, h: 17},
+  'KC-135': {w: 42, h: 18},
+  'F-16': {w: 30, h: 14},
+  'Unknown': {w: 24, h: 24}
+};
+
+function getAircraftRenderInfo(p){
+  if(!p) return {img: imgPlane, w: 30, h: 14};
+  if(p.type === 'enemy') return {img: imgEnemy, w: 24, h: 24};
+  const profile = aircraftVisualProfile[p.model] || (
+    p.type === 'fighter' ? {w: 30, h: 14} :
+    p.type === 'tanker' ? {w: 42, h: 18} :
+    p.type === 'cargo' || p.type === 'transport' ? {w: 38, h: 17} :
+    {w: 34, h: 16}
+  );
+  const img = aircraftImageByModel[p.model] || (
+    p.type === 'fighter' ? imgFighter :
+    p.type === 'tanker' ? imgCargo :
+    p.type === 'cargo' || p.type === 'transport' ? imgCargo :
+    imgPlane
+  );
+  return {img, w: profile.w, h: profile.h};
+}
+
+function getAircraftSelectRadius(p){
+  const info = getAircraftRenderInfo(p);
+  return Math.max(18, Math.max(info.w, info.h) * 0.65);
+}
+
+function getAircraftRadarColor(p){
+  if(!p) return '#ffffff';
+  if(p.selected) return '#ffe56b';
+  if(p.type === 'enemy') return '#ff8a65';
+  return '#ffd21f';
+}
+
+function getAircraftRadarBadge(p){
+  if(!p) return null;
+  if(p.type === 'enemy') return {text:'!', bg:'#ff4d5a', fg:'#ffffff'};
+  if(p.type === 'fighter') return {text:'F', bg:'#3da9fc', fg:'#ffffff'};
+  if(p.type === 'tanker') return {text:'T', bg:'#14b8a6', fg:'#ffffff'};
+  if(p.type === 'cargo' || p.type === 'transport') return {text:'C', bg:'#475569', fg:'#f8fafc'};
+  return {text:'A', bg:'#0f172a', fg:'#ffe56b'};
+}
+
+function drawAircraftGlyph(p, x, y, w, h){
+  const color = getAircraftRadarColor(p);
+  const hdg = Number.isFinite(p?.hdg) ? p.hdg : 0;
+  const bodyLen = Math.max(14, w * 0.78);
+  const wingSpan = Math.max(10, h * 1.15);
+  const tailSpan = Math.max(6, h * 0.62);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(hdg);
+  ctx.lineJoin = 'round';
+
+  // Compact filled aircraft silhouette (flight tracker style)
+  ctx.beginPath();
+  ctx.moveTo(bodyLen * 0.58, 0); // nose
+  ctx.lineTo(bodyLen * 0.12, -wingSpan * 0.12);
+  ctx.lineTo(bodyLen * 0.00, -wingSpan * 0.48); // main wing tip
+  ctx.lineTo(-bodyLen * 0.10, -wingSpan * 0.08);
+  ctx.lineTo(-bodyLen * 0.34, -tailSpan * 0.18);
+  ctx.lineTo(-bodyLen * 0.50, -tailSpan * 0.40); // tail tip
+  ctx.lineTo(-bodyLen * 0.56, 0); // tail center
+  ctx.lineTo(-bodyLen * 0.50, tailSpan * 0.40);
+  ctx.lineTo(-bodyLen * 0.34, tailSpan * 0.18);
+  ctx.lineTo(-bodyLen * 0.10, wingSpan * 0.08);
+  ctx.lineTo(bodyLen * 0.00, wingSpan * 0.48); // main wing tip
+  ctx.lineTo(bodyLen * 0.12, wingSpan * 0.12);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(-bodyLen * 0.56, 0, bodyLen * 0.58, 0);
+  if(p && p.type === 'enemy'){
+    grad.addColorStop(0, '#ff8a65');
+    grad.addColorStop(1, '#ff4d5a');
+  } else {
+    grad.addColorStop(0, '#ffe56b');
+    grad.addColorStop(1, '#ffbf1a');
+  }
+  ctx.shadowColor = p && p.selected ? '#ffe56b' : color;
+  ctx.shadowBlur = p && p.selected ? 10 : 6;
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Tiny edge for readability on map background
+  ctx.strokeStyle = 'rgba(10,20,30,0.65)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Cabin shine to make the icon feel more like a logo
+  ctx.beginPath();
+  ctx.moveTo(bodyLen * 0.36, -1.2);
+  ctx.lineTo(-bodyLen * 0.2, -1.2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Small badge/logo marker per aircraft category
+  const badge = getAircraftRadarBadge(p);
+  if(badge){
+    const bx = x + Math.max(8, w * 0.24);
+    const by = y - Math.max(8, h * 0.24);
+    ctx.beginPath();
+    ctx.arc(bx, by, 5.2, 0, Math.PI*2);
+    ctx.fillStyle = badge.bg;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = badge.fg;
+    ctx.font = 'bold 7px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badge.text, bx, by + 0.2);
+  }
+
+  // reset alignment so labels keep default canvas alignment
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+const aircraftWikiPageByModel = {
+  'A320': 'Airbus_A320_family',
+  'B737': 'Boeing_737',
+  'E195': 'Embraer_195',
+  'A321': 'Airbus_A320_family',
+  'A330': 'Airbus_A330',
+  'B777': 'Boeing_777',
+  'A350': 'Airbus_A350',
+  'B787': 'Boeing_787_Dreamliner',
+  'B747': 'Boeing_747',
+  'ATR72': 'ATR_72',
+  'C172': 'Cessna_172',
+  'A330F': 'Airbus_A330',
+  'B777F': 'Boeing_777',
+  'Cargo': 'Cargo_aircraft',
+  'KC-135': 'Boeing_KC-135_Stratotanker',
+  'F-16': 'General_Dynamics_F-16_Fighting_Falcon'
+};
+const aircraftPhotoCache = new Map();
+
+function getAircraftWikiPage(p){
+  if(!p) return null;
+  if(p.model && aircraftWikiPageByModel[p.model]) return aircraftWikiPageByModel[p.model];
+  if(p.type === 'fighter') return 'General_Dynamics_F-16_Fighting_Falcon';
+  if(p.type === 'tanker') return 'Boeing_KC-135_Stratotanker';
+  if(p.type === 'cargo' || p.type === 'transport') return 'Cargo_aircraft';
+  if(p.type === 'civil') return 'Airliner';
+  return null;
+}
+
+async function setSelectedInfoPhoto(p){
+  const imgEl = document.getElementById('info-img');
+  if(!imgEl || !p) return;
+  const fallback = p.img || svgPlane;
+  imgEl.src = fallback;
+  imgEl.alt = 'Photo ' + (p.model || p.type || 'avion');
+  imgEl.onerror = () => { imgEl.src = fallback; };
+
+  const pageTitle = getAircraftWikiPage(p);
+  if(!pageTitle) return;
+
+  if(aircraftPhotoCache.has(pageTitle)){
+    const cachedSrc = aircraftPhotoCache.get(pageTitle);
+    const selected = entities.find(e=>e.selected);
+    if(selected === p && cachedSrc) imgEl.src = cachedSrc;
+    return;
+  }
+
+  try{
+    const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(pageTitle);
+    const res = await fetch(url);
+    if(!res.ok) return;
+    const data = await res.json();
+    const src = (data && data.thumbnail && data.thumbnail.source) || (data && data.originalimage && data.originalimage.source) || '';
+    if(!src) return;
+    aircraftPhotoCache.set(pageTitle, src);
+    const selected = entities.find(e=>e.selected);
+    if(selected === p) imgEl.src = src;
+  }catch(e){}
+}
 
 // stylized world map SVG as background (low-detail, abstract continents)
 const svgWorld = svgDataURL(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
@@ -580,9 +804,11 @@ function drawEntities(){
   });
   entities.forEach(p=>{
     const dx = p.x, dy = p.y;
+    const render = getAircraftRenderInfo(p);
+    const selectRadius = getAircraftSelectRadius(p);
     // draw trajectory
     if(showTrajectory && p.history && p.history.length>1){ ctx.beginPath(); ctx.moveTo(p.history[0].x,p.history[0].y); for(let i=1;i<p.history.length;i++){ ctx.lineTo(p.history[i].x,p.history[i].y); } ctx.strokeStyle=p.selected?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.06)'; ctx.lineWidth=p.selected?1.8:1; ctx.stroke(); }
-    
+
     // Draw crash indicator
     if(p._crashed){
       ctx.beginPath(); ctx.arc(dx,dy,35,0,Math.PI*2); ctx.strokeStyle='rgba(255,0,0,0.8)'; ctx.lineWidth=3; ctx.stroke();
@@ -594,12 +820,12 @@ function drawEntities(){
         ctx.beginPath(); ctx.arc(dx,dy,20 + timeSinceCrash/50,0,Math.PI*2); ctx.fillStyle=`rgba(255,165,0,${alpha*0.5})`; ctx.fill();
       }
     }
-    
+
     if(p.selected){ // halo
-      ctx.beginPath(); ctx.arc(dx,dy,26,0,Math.PI*2); ctx.strokeStyle='rgba(255,206,102,0.25)'; ctx.lineWidth=3; ctx.stroke();
+      ctx.beginPath(); ctx.arc(dx,dy,selectRadius + 8,0,Math.PI*2); ctx.strokeStyle='rgba(255,206,102,0.25)'; ctx.lineWidth=3; ctx.stroke();
     }
     if(Number.isFinite(p._fuel) && p._fuel <= 10){
-      const pulse = 20 + Math.sin(performance.now()/180)*4;
+      const pulse = selectRadius + Math.sin(performance.now()/180)*4;
       ctx.beginPath(); ctx.arc(dx,dy,pulse,0,Math.PI*2);
       ctx.strokeStyle = p._fuel <= 4 ? 'rgba(255,0,0,0.85)' : 'rgba(255,165,0,0.8)';
       ctx.lineWidth = 2;
@@ -609,38 +835,28 @@ function drawEntities(){
       ctx.fillText('FUEL ' + Math.round(p._fuel) + '%', dx-20, dy-22);
     }
     if(p._forcedByTanker){
-      ctx.beginPath(); ctx.arc(dx,dy,30,0,Math.PI*2);
+      ctx.beginPath(); ctx.arc(dx,dy,selectRadius + 12,0,Math.PI*2);
       ctx.strokeStyle='rgba(255,90,90,0.9)'; ctx.lineWidth=2; ctx.stroke();
       ctx.fillStyle='rgba(255,150,150,0.95)'; ctx.font='10px system-ui';
       ctx.fillText('FORCE RTB', dx-24, dy-30);
     }
     if(p.type==='enemy'){
-      ctx.drawImage(imgEnemy, dx-10, dy-10, 20,20);
+      drawAircraftGlyph(p, dx, dy, render.w, render.h);
       // Draw alert indicator if alerted
       if(p._alerted){
-        ctx.beginPath(); ctx.arc(dx,dy,28,0,Math.PI*2); ctx.strokeStyle='rgba(255,165,0,0.6)'; ctx.lineWidth=2; ctx.stroke();
+        ctx.beginPath(); ctx.arc(dx,dy,selectRadius + 10,0,Math.PI*2); ctx.strokeStyle='rgba(255,165,0,0.6)'; ctx.lineWidth=2; ctx.stroke();
         ctx.fillStyle='rgba(255,165,0,0.9)'; ctx.font='10px system-ui'; ctx.fillText('⚠️ ALERTE', dx-20, dy-18);
       }
-    } else if(p.type==='fighter'){
-      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgFighter, -10, -10, 20,20); ctx.restore();
-    } else if(p.type==='tanker'){
-      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgCargo, -12, -12, 24,24); ctx.restore();
-      ctx.beginPath(); ctx.arc(dx,dy,18,0,Math.PI*2); ctx.strokeStyle='rgba(45,212,191,0.85)'; ctx.lineWidth=2; ctx.stroke();
-    } else if(p.type==='cargo' || p.type==='transport'){
-      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg);
-      // Use preloaded image or create one
-      let cargoImg = imgCargo;
-      if(p.model==='A330F') cargoImg = imgA330;
-      else if(p.model==='B777F') cargoImg = imgB777;
-      ctx.drawImage(cargoImg, -12, -12, 24,24); ctx.restore();
     } else {
-      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgPlane, -10, -10, 20,20); ctx.restore();
+      drawAircraftGlyph(p, dx, dy, render.w, render.h);
+      if(p.type==='tanker'){
+        ctx.beginPath(); ctx.arc(dx,dy,selectRadius + 3,0,Math.PI*2); ctx.strokeStyle='rgba(45,212,191,0.85)'; ctx.lineWidth=2; ctx.stroke();
+      }
     }
     ctx.fillStyle = p.selected? 'rgba(255,206,102,0.95)' : 'rgba(230,242,255,0.95)'; ctx.font='12px system-ui'; ctx.fillText(p.call, dx+14, dy-6);
     ctx.fillStyle = 'rgba(230,242,255,0.6)'; ctx.font='11px system-ui'; ctx.fillText(Math.round(p.alt)+' ft', dx+14, dy+8);
   });
 }
-
 function loop(now){
   const dt = now - last; last = now;
   update(dt);
@@ -706,7 +922,7 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
     // update top-right detailed info
     try{
       const panel = document.getElementById('selected-info'); if(panel) panel.classList.remove('hidden');
-      const img = document.getElementById('info-img'); if(img) img.src = p.img || svgPlane;
+      setSelectedInfoPhoto(p);
       
       // Get type label
       let typeLabel = 'Commercial';
@@ -753,7 +969,11 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
 
 function findEntityAt(x,y){ // x,y are screen coords; convert to world (with zoom)
   const wx = cx + (x + cam.x - cx) / cam.zoom, wy = cy + (y + cam.y - cy) / cam.zoom;
-  for(let i=entities.length-1;i>=0;i--){ const p=entities[i]; const dx=p.x-wx, dy=p.y-wy; if(Math.hypot(dx,dy)<30) return p; }
+  for(let i=entities.length-1;i>=0;i--){
+    const p=entities[i];
+    const dx=p.x-wx, dy=p.y-wy;
+    if(Math.hypot(dx,dy) < getAircraftSelectRadius(p) + 6) return p;
+  }
   // airports
   for(let a of airports){ if(Math.hypot(a.x-wx,a.y-wy) < a.r) return {airport:a}; }
   return null;
@@ -1031,7 +1251,7 @@ setInterval(updateFuelAlertsPanel, 1000);
 function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
 // Ensure promises are real promises (some browsers may not implement decode)
 const decodes = [
-  imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{}),
+  imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA320.decode?.().catch(()=>{}), imgB737.decode?.().catch(()=>{}), imgE195.decode?.().catch(()=>{}), imgA321.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{}),
   imgA350.decode?.().catch(()=>{}), imgB787.decode?.().catch(()=>{}), imgB747.decode?.().catch(()=>{}), imgATR72.decode?.().catch(()=>{}), imgC172.decode?.().catch(()=>{})
 ].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
