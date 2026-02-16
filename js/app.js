@@ -44,7 +44,7 @@ function showNotification(message, type='info', duration=5000, force=false){
   }, duration);
 }
 // camera for pan (world coordinates) - declared early so resize() can use it
-const cam = {x:0,y:0,zoom:0.9}; // Base zoom (user-adjustable)
+const cam = {x:0,y:0,zoom:0.72}; // Base zoom (user-adjustable)
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
 // Radio system
@@ -61,6 +61,77 @@ function randomFreq(){ const i = Math.floor(Math.random()*(RADIO_STEPS+1)); retu
 function updateRadioLink(){ const sel = entities.find(e=>e.selected); const linkEl = document.getElementById('radio-link'); if(!linkEl){return;} if(sel && Math.abs((sel.freq||0)-radioFreq)<1e-6){ linkEl.textContent='SYNC'; linkEl.style.color='#2dd4bf'; } else { linkEl.textContent='NO LINK'; linkEl.style.color='rgba(230,242,255,0.7)'; } }
 let _miniatc_loop_started = false;
 let gamePaused = true; // Jeu en pause tant que le menu serveur est affiché
+const DISCORD_WEBHOOK_URL = (window.DISCORD_WEBHOOK_URL || window.localStorage.getItem('fx_discord_webhook') || '').trim();
+let discordSessionSent = false;
+let playElapsedMs = 0;
+let followSelected = false;
+let followedEntityId = null;
+
+function formatElapsedTime(ms){
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if(h > 0) return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function updatePlayTimeHud(){
+  const el = document.getElementById('session-time');
+  if(!el) return;
+  el.textContent = 'Temps: ' + formatElapsedTime(playElapsedMs);
+}
+
+function updateFollowCamera(){
+  if(!followSelected || !followedEntityId) return;
+  const target = entities.find(e => e.id === followedEntityId && !e._crashed);
+  if(!target){
+    followSelected = false;
+    followedEntityId = null;
+    return;
+  }
+  const desiredX = (target.x - cx) * cam.zoom;
+  const desiredY = (target.y - cy) * cam.zoom;
+  cam.x += (desiredX - cam.x) * 0.14;
+  cam.y += (desiredY - cam.y) * 0.14;
+}
+
+function cancelCameraFollow(){
+  followSelected = false;
+  followedEntityId = null;
+}
+
+async function sendDiscordPlayNotification(){
+  if(!DISCORD_WEBHOOK_URL || discordSessionSent) return;
+  discordSessionSent = true;
+  try{
+    const nowIso = new Date().toISOString();
+    const payload = {
+      username: 'FX CONTROL',
+      content: 'Un joueur vient de lancer une partie.',
+      embeds: [{
+        title: 'Session en direct',
+        color: 2277396,
+        fields: [
+          {name: 'Heure UTC', value: nowIso, inline: true},
+          {name: 'Plateforme', value: navigator.userAgent.slice(0, 180), inline: false}
+        ]
+      }]
+    };
+    const res = await fetch(DISCORD_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      discordSessionSent = false;
+      console.warn('Discord webhook error', res.status);
+    }
+  }catch(err){
+    discordSessionSent = false;
+    console.warn('Discord webhook failed', err);
+  }
+}
 function startMainLoop(){ if(!_miniatc_loop_started){ _miniatc_loop_started = true; try{ setStatus('Démarrage boucle'); hideLoading(); requestAnimationFrame(loop); setStatus(''); }catch(e){ console.error(e); setStatus('Erreur au démarrage: '+(e.message||e)); } } }
 function resize(){
   const dpr = window.devicePixelRatio || 1;
@@ -379,13 +450,20 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   // Find nearest airport for origin
   let nearestOrigin = null; let dminOrigin = Infinity;
   for(let a of airports){ const d = Math.hypot(a.x-px, a.y-py); if(d<dminOrigin){ dminOrigin=d; nearestOrigin=a; } }
-  base.origin = nearestOrigin ? nearestOrigin.name : 'Inconnu';
+  base.originAirport = nearestOrigin ? nearestOrigin.name : 'Inconnu';
+  base.originCountry = nearestOrigin ? nearestOrigin.country : 'Inconnu';
+  base.origin = base.originAirport + ' (' + base.originCountry + ')';
   
   // Pick random destination airport
   if(airports.length > 0){
     const destIndex = Math.floor(Math.random() * airports.length);
-    base.destination = airports[destIndex].name;
+    const destAirport = airports[destIndex];
+    base.destinationAirport = destAirport.name;
+    base.destinationCountry = destAirport.country;
+    base.destination = destAirport.name + ' (' + destAirport.country + ')';
   } else {
+    base.destinationAirport = 'Inconnu';
+    base.destinationCountry = 'Inconnu';
     base.destination = 'Inconnu';
   }
   
@@ -399,6 +477,7 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.model = Math.random() < 0.5 ? 'F-16' : 'Rafale';
     base.img = base.model === 'Rafale' ? svgRafale : svgFighter;
     base.origin = 'Base Militaire';
+    base.originCountry = 'France';
     base.destination = 'Patrouille';
     base.passengers = 0;
     base.weight = '12 t';
@@ -412,6 +491,7 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.model = 'KC-135';
     base.img = svgCargo;
     base.origin = 'Base de Ravitaillement';
+    base.originCountry = 'France';
     base.destination = 'Mission de ravitaillement';
     base.passengers = 6;
     base.weight = '40 t';
@@ -424,7 +504,9 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.model = 'Unknown'; 
     base.img = svgEnemy;
     base.origin = 'Inconnu';
+    base.originCountry = 'Inconnu';
     base.destination = 'Inconnu';
+    base.destinationCountry = 'Inconnu';
     base.passengers = '?';
     base.weight = '?';
     base.airline = 'Inconnu';
@@ -489,7 +571,7 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   entities.push(base);
 }
 
-function spawnAirport(x,y,name){ airports.push({x,y,name,r:28}); }
+function spawnAirport(x,y,name,country='Zone Internationale'){ airports.push({x,y,name,country,r:28}); }
 
 // define a set of cities and countries (for background map-like look) - enlarged for bigger map
 const countries = [
@@ -515,12 +597,18 @@ function getCities(){
 function initAirports(){
   airports.length = 0;
   // core/central airports (major hubs)
-  spawnAirport(cx - 240, cy - 160, 'FX-ONE');
-  spawnAirport(cx + 280, cy + 120, 'FX-TWO');
-  spawnAirport(cx, cy, 'FX-HUB');
-  spawnAirport(cx - 500, cy + 200, 'FX-CARGO');
+  spawnAirport(cx - 240, cy - 160, 'FX-ONE', 'France');
+  spawnAirport(cx + 280, cy + 120, 'FX-TWO', 'Germany');
+  spawnAirport(cx, cy, 'FX-HUB', 'United Kingdom');
+  spawnAirport(cx - 500, cy + 200, 'FX-CARGO', 'Spain');
   // city airports
-  for(const c of getCities()){ spawnAirport(c.x, c.y, 'APT '+c.name.replace(/\s+/g,'')); }
+  const cityCountries = ['Italy', 'Belgium', 'Netherlands', 'Portugal', 'Switzerland', 'Austria'];
+  let cityCountryIndex = 0;
+  for(const c of getCities()){
+    const cc = cityCountries[cityCountryIndex % cityCountries.length];
+    cityCountryIndex++;
+    spawnAirport(c.x, c.y, 'APT '+c.name.replace(/\s+/g,''), cc);
+  }
   // ring airports around the center to enlarge the world
   const rings = [
     {r: 700, n: 6, p:'R1-'},
@@ -532,7 +620,9 @@ function initAirports(){
       const a = i*(Math.PI*2/ring.n);
       const ax = cx + Math.cos(a)*ring.r;
       const ay = cy + Math.sin(a)*ring.r;
-      spawnAirport(ax, ay, 'FX-'+ring.p+(i+1));
+      const ringCountries = ['USA', 'Canada', 'Brazil', 'Japan', 'South Korea', 'Australia', 'Morocco', 'Turkey', 'UAE', 'India'];
+      const cName = ringCountries[(i + ring.r) % ringCountries.length];
+      spawnAirport(ax, ay, 'FX-'+ring.p+(i+1), cName);
     }
   }
 }
@@ -642,6 +732,8 @@ resize();
 
 function update(dt){
   if(gamePaused) return;
+  playElapsedMs += dt;
+  updatePlayTimeHud();
   updateBurstEffects(dt);
   enemyAttackFighters(dt);
   // entity behavior
@@ -670,6 +762,14 @@ function update(dt){
       if(!target._beingTracked){
         target._beingTracked = true;
         target._trackedBy = p.id;
+      }
+      if(target.type === 'enemy' && dist < 28 && Math.random() < 0.28){
+        markAircraftDestroyed(target, 'Intercepte par avion de chasse');
+        if(Math.random() < 0.16){
+          markAircraftDestroyed(p, 'Detruit en combat aerien');
+        } else {
+          p.targetId = null;
+        }
       }
     } else if(p.type==='tanker' && p.targetId){
       const tgt = entities.find(e=>e.id===p.targetId);
@@ -782,9 +882,10 @@ function update(dt){
       }
       
       // Larger bounds for bigger map
-      if(p.x<-6000||p.x>W+6000||p.y<-6000||p.y>H+6000){ entities.splice(i,1); }
+      if(p.x<-9000||p.x>W+9000||p.y<-9000||p.y>H+9000){ entities.splice(i,1); }
     }
   }
+  updateFollowCamera();
   const selected = entities.find(e => e.selected);
   if(selected){
     const fuelText = Number.isFinite(selected._fuel) ? (Math.round(selected._fuel) + '%') : (selected.fuel || '—');
@@ -811,7 +912,7 @@ function drawBackgroundScreen(){
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   // draw world map image behind everything (if loaded) - larger for bigger view
   try{
-    const mapW = Math.max(W,H) * 5.5; const mapH = mapW * 0.5;
+    const mapW = Math.max(W,H) * 7.5; const mapH = mapW * 0.5;
     ctx.globalAlpha = 0.9;
     ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
     ctx.globalAlpha = 1.0;
@@ -987,6 +1088,9 @@ setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy')
   function chooseLocal(){
     gamePaused = false;
     if(panel) panel.style.display='none';
+    if(playElapsedMs <= 0) playElapsedMs = 0;
+    updatePlayTimeHud();
+    sendDiscordPlayNotification();
     if(!_miniatc_loop_started) startMainLoop();
     showNotification('Connexion: Local', 'info', 1200);
   }
@@ -997,8 +1101,11 @@ setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy')
   // À chaque chargement, afficher le menu si disponible; sinon démarrer directement
   if(panel) {
     panel.style.display='flex';
+    updatePlayTimeHud();
   } else {
     gamePaused = false;
+    updatePlayTimeHud();
+    sendDiscordPlayNotification();
     startMainLoop();
   }
 })();
@@ -1007,8 +1114,13 @@ setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy')
 const info = document.getElementById('info');
 const controls = document.getElementById('controls');
 const selectedDiv = document.getElementById('selected');
-function selectEntity(p){ entities.forEach(x=>x.selected=false); 
+function selectEntity(p){
+  if(p && p.airport) p = null;
+  entities.forEach(x=>x.selected=false); 
   if(p){ p.selected=true; controls.classList.remove('hidden');
+    followSelected = true;
+    followedEntityId = p.id;
+    cam.zoom = Math.min(cam.zoom, 0.68);
     selectedDiv.innerHTML = '<strong>'+p.call+'</strong><br>Type: '+(p.type||'civil')+' • ALT: '+Math.round(p.alt)+' ft<br>SPD: '+Math.round(p.spd)+' kt • HDG: '+Math.round((p.hdg*180/Math.PI+360)%360)+'°';
     // update top-right detailed info
     try{
@@ -1034,6 +1146,7 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
       const it = document.getElementById('info-type'); if(it) it.textContent = 'Type: ' + typeLabel;
       const im = document.getElementById('info-model'); if(im) im.textContent = 'Modèle: ' + (p.model||'—');
       const originEl = document.getElementById('info-origin'); if(originEl) originEl.innerHTML = '<strong>Départ:</strong> ' + (p.origin || 'Inconnu');
+      const originCountryEl = document.getElementById('info-origin-country'); if(originCountryEl) originCountryEl.innerHTML = '<strong>Pays origine:</strong> ' + (p.originCountry || 'Inconnu');
       const destEl = document.getElementById('info-destination'); if(destEl) destEl.innerHTML = '<strong>Destination:</strong> ' + (p.destination || 'Inconnu');
       const statusEl = document.getElementById('info-status'); if(statusEl) statusEl.innerHTML = '<strong>Statut:</strong> ' + status;
       const altEl = document.getElementById('info-alt'); if(altEl) altEl.innerHTML = '<strong>Altitude:</strong> ' + Math.round(p.alt) + ' ft';
@@ -1051,6 +1164,7 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
     updateRadioLink();
     info.textContent = ''
   } else { 
+    cancelCameraFollow();
     controls.classList.add('hidden'); 
     const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden');
     const refuelBtn = document.getElementById('refuel'); if(refuelBtn) refuelBtn.classList.add('hidden');
@@ -1074,7 +1188,7 @@ function findEntityAt(x,y){ // x,y are screen coords; convert to world (with zoo
 canvas.addEventListener('wheel', e=>{
   const delta = Math.sign(e.deltaY);
   const prev = cam.zoom;
-  cam.zoom = Math.min(1.6, Math.max(0.6, cam.zoom + (delta>0?-0.08:0.08)));
+  cam.zoom = Math.min(2.0, Math.max(0.35, cam.zoom + (delta>0?-0.08:0.08)));
   const k = cam.zoom/prev;
   cam.x = cx - (cx - cam.x) * k;
   cam.y = cy - (cy - cam.y) * k;
@@ -1336,11 +1450,12 @@ const _rInc = document.getElementById('radio-inc'); if(_rInc) _rInc.addEventList
 const _rSync = document.getElementById('radio-sync'); if(_rSync) _rSync.addEventListener('click', ()=>{ const p = entities.find(x=>x.selected); if(p){ setRadio(p.freq||radioFreq); showNotification('Radio réglée sur '+formatFreq(radioFreq)+' MHz', 'info', 1200); } else { showNotification('Aucun avion sélectionné', 'warning', 1200); } });
 
 // Zoom buttons
-const _zIn = document.getElementById('zoom-in'); if(_zIn) _zIn.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.min(1.6, cam.zoom + 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
-const _zOut = document.getElementById('zoom-out'); if(_zOut) _zOut.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.max(0.6, cam.zoom - 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
+const _zIn = document.getElementById('zoom-in'); if(_zIn) _zIn.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.min(2.0, cam.zoom + 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
+const _zOut = document.getElementById('zoom-out'); if(_zOut) _zOut.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.max(0.35, cam.zoom - 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
 
 // Init radio display
 setRadio(radioFreq);
+updatePlayTimeHud();
 if(_elToggleZones) _elToggleZones.classList.toggle('active', showRadarZones);
 updateFuelAlertsPanel();
 setInterval(updateFuelAlertsPanel, 1000);
@@ -1371,7 +1486,7 @@ window.addEventListener('mousemove', e=>{
   if(!mouseDown) return;
   const dx = e.clientX - mouseStart.x, dy = e.clientY - mouseStart.y;
   if(!mousePanned && Math.hypot(dx,dy) > 6) mousePanned = true;
-  if(mousePanned){ cam.x -= dx; cam.y -= dy; mouseStart = {x:e.clientX, y:e.clientY}; }
+  if(mousePanned){ cancelCameraFollow(); cam.x -= dx; cam.y -= dy; mouseStart = {x:e.clientX, y:e.clientY}; }
 });
 window.addEventListener('mouseup', e=>{ if(mouseDown && !mousePanned){ /* let click handler run */ } mouseDown = false; mousePanned = false; });
 
@@ -1384,7 +1499,7 @@ canvas.addEventListener('touchstart', e=>{
 });
 canvas.addEventListener('touchmove', e=>{
   if(!touchState) return;
-  if(e.touches.length>=1){ const t = e.touches[0]; const dx = t.clientX - touchState.screenX, dy = t.clientY - touchState.screenY; if(Math.hypot(dx,dy)>6){ touchState.panned = true; cam.x -= dx; cam.y -= dy; touchState.screenX = t.clientX; touchState.screenY = t.clientY; } }
+  if(e.touches.length>=1){ const t = e.touches[0]; const dx = t.clientX - touchState.screenX, dy = t.clientY - touchState.screenY; if(Math.hypot(dx,dy)>6){ touchState.panned = true; cancelCameraFollow(); cam.x -= dx; cam.y -= dy; touchState.screenX = t.clientX; touchState.screenY = t.clientY; } }
 });
 canvas.addEventListener('touchend', e=>{
   if(!touchState) return; if(!touchState.panned){ const item = findEntityAt(touchState.x,touchState.y); selectEntity(item); }
