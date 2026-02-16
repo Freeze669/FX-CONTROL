@@ -21,6 +21,7 @@ main{flex:1;position:relative;display:flex;align-items:stretch}
 .btn-row{display:flex;gap:8px;margin-top:6px}
 #controls button svg{vertical-align:middle;margin-left:6px}
 button{flex:1;padding:12px;border:0;border-radius:8px;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px}
+.btn-small.active{background:rgba(45,212,191,0.25);border:1px solid rgba(45,212,191,0.45)}
 #selected{background:rgba(0,0,0,0.5);padding:8px;border-radius:8px}
 footer{padding:8px;text-align:center;font-size:12px;color:rgba(230,242,255,0.7)}
 
@@ -106,5 +107,4 @@ main{position:fixed;top:0;left:0;right:0;bottom:0}
   .card-right{width:100%}
   .server-btn-primary{width:100%}
 }
-
 

@@ -79,6 +79,7 @@ function resize(){
 const entities = []; // planes, fighters, enemies
 const airports = [];
 let showTrajectory = true;
+let showRadarZones = true;
 let last = performance.now();
 function rand(min,max){return Math.random()*(max-min)+min}
 function callsign(){const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ";return chars[Math.floor(Math.random()*chars.length)]+chars[Math.floor(Math.random()*chars.length)]+Math.floor(rand(10,999)).toString();}
@@ -89,6 +90,7 @@ function svgDataURL(svg){ return 'data:image/svg+xml;utf8,'+encodeURIComponent(s
 // Realistic aircraft silhouettes in white
 const svgPlane = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 30"><path fill="%23ffffff" d="M5 15 L20 8 L75 8 L90 15 L75 22 L20 22 Z M20 10 L70 10 L85 15 L70 20 L20 20 Z M25 12 L30 12 L30 18 L25 18 Z M35 12 L40 12 L40 18 L35 18 Z"/><circle cx="15" cy="15" r="2" fill="%23ffffff"/><circle cx="85" cy="15" r="2" fill="%23ffffff"/></svg>');
 const svgFighter = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 30"><path fill="%23ff4444" d="M10 15 L25 5 L70 5 L85 15 L70 25 L25 25 Z M25 8 L65 8 L80 15 L65 22 L25 22 Z M30 10 L35 10 L35 20 L30 20 Z M40 10 L45 10 L45 20 L40 20 Z"/><circle cx="20" cy="15" r="2" fill="%23ff4444"/><circle cx="80" cy="15" r="2" fill="%23ff4444"/></svg>');
+const svgRafale = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 34"><path fill="%233da9fc" d="M12 17 L32 7 L84 7 L106 17 L84 27 L32 27 Z M32 10 L80 10 L100 17 L80 24 L32 24 Z M40 12 L46 12 L46 22 L40 22 Z M52 12 L58 12 L58 22 L52 22 Z"/><path fill="%23dbeafe" d="M24 17 L34 12 L34 22 Z M92 14 L102 17 L92 20 Z"/><circle cx="18" cy="17" r="2" fill="%233da9fc"/><circle cx="106" cy="17" r="2" fill="%233da9fc"/></svg>');
 const svgEnemy = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ff2d55" stroke="%23ffffff" stroke-width="3"/><path fill="%23ffffff" d="M30 50 L50 30 L70 50 L50 70 Z"/></svg>');
 const svgAirport = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="4" rx="1" fill="%232dd4bf"/></svg>');
 
@@ -111,6 +113,7 @@ const svgC172 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 
 const imgPlane = new Image(); imgPlane.src = svgPlane;
 const imgFighter = new Image(); imgFighter.src = svgFighter;
+const imgRafale = new Image(); imgRafale.src = svgRafale;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
 const imgAirport = new Image(); imgAirport.src = svgAirport;
 const imgCargo = new Image(); imgCargo.src = svgCargo;
@@ -143,6 +146,7 @@ const aircraftImageByModel = {
   'Cargo': imgCargo,
   'KC-135': imgCargo,
   'F-16': imgFighter,
+  'Rafale': imgRafale,
   'Unknown': imgEnemy
 };
 
@@ -163,6 +167,7 @@ const aircraftVisualProfile = {
   'Cargo': {w: 38, h: 17},
   'KC-135': {w: 42, h: 18},
   'F-16': {w: 30, h: 14},
+  'Rafale': {w: 32, h: 14},
   'Unknown': {w: 24, h: 24}
 };
 
@@ -301,7 +306,8 @@ const aircraftWikiPageByModel = {
   'B777F': 'Boeing_777',
   'Cargo': 'Cargo_aircraft',
   'KC-135': 'Boeing_KC-135_Stratotanker',
-  'F-16': 'General_Dynamics_F-16_Fighting_Falcon'
+  'F-16': 'General_Dynamics_F-16_Fighting_Falcon',
+  'Rafale': 'Dassault_Rafale'
 };
 const aircraftPhotoCache = new Map();
 
@@ -390,8 +396,8 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   if(type==='fighter'){ 
     base.spd = 380; 
     base.targetId = null; 
-    base.model = 'F-16'; 
-    base.img = svgFighter;
+    base.model = Math.random() < 0.5 ? 'F-16' : 'Rafale';
+    base.img = base.model === 'Rafale' ? svgRafale : svgFighter;
     base.origin = 'Base Militaire';
     base.destination = 'Patrouille';
     base.passengers = 0;
@@ -536,6 +542,7 @@ initAirports();
 const zones = [];
 const routes = [];
 const waypoints = [];
+const burstEffects = [];
 function initZonesAndRoutes(){
   zones.length = 0; routes.length = 0; waypoints.length = 0;
   // Larger control zones for bigger map
@@ -565,6 +572,69 @@ function initZonesAndRoutes(){
 }
 initZonesAndRoutes();
 
+function addBurstEffect(x, y, color='rgba(255,120,80,0.95)'){
+  burstEffects.push({x, y, color, life: 220, maxLife: 220, r: 7 + Math.random()*6});
+}
+
+function updateBurstEffects(dt){
+  for(let i=burstEffects.length-1;i>=0;i--){
+    burstEffects[i].life -= dt;
+    if(burstEffects[i].life <= 0) burstEffects.splice(i,1);
+  }
+}
+
+function drawBurstEffects(){
+  for(const fx of burstEffects){
+    const t = Math.max(0, fx.life / fx.maxLife);
+    const rr = fx.r + (1 - t) * 16;
+    ctx.beginPath();
+    ctx.arc(fx.x, fx.y, rr, 0, Math.PI*2);
+    ctx.strokeStyle = fx.color.replace('0.95', (0.12 + t * 0.55).toFixed(2));
+    ctx.lineWidth = 1.2 + t * 2.5;
+    ctx.stroke();
+  }
+}
+
+function markAircraftDestroyed(victim, reason){
+  if(!victim || victim._crashed) return;
+  victim._crashed = true;
+  victim._crashTime = performance.now();
+  victim._crashReason = reason || 'Detruit';
+  addBurstEffect(victim.x, victim.y, 'rgba(255,80,80,0.95)');
+  showNotification('CRASH: ' + victim.call + ' - ' + victim._crashReason, 'warning', 3800);
+  if(victim.selected) selectEntity(null);
+  setTimeout(()=>{
+    const idx = entities.indexOf(victim);
+    if(idx>=0) entities.splice(idx,1);
+  }, 1800);
+}
+
+function enemyAttackFighters(dt){
+  for(const enemy of entities){
+    if(enemy.type !== 'enemy' || enemy._crashed) continue;
+    enemy._attackCd = Math.max(0, (enemy._attackCd||0) - dt);
+    if(enemy._attackCd > 0) continue;
+
+    let target = null;
+    let dmin = 220;
+    for(const e of entities){
+      if(e.type !== 'fighter' || e._crashed) continue;
+      const d = Math.hypot(e.x - enemy.x, e.y - enemy.y);
+      if(d < dmin){ dmin = d; target = e; }
+    }
+    if(!target) continue;
+
+    enemy._attackCd = rand(900, 1700);
+    const ax = (enemy.x + target.x) * 0.5 + rand(-10,10);
+    const ay = (enemy.y + target.y) * 0.5 + rand(-10,10);
+    addBurstEffect(ax, ay, 'rgba(255,120,70,0.95)');
+    if(Math.random() < 0.38){
+      markAircraftDestroyed(target, 'Abattu par avion ennemi');
+      showNotification('ENNEMI: ' + enemy.call + ' a detruit ' + target.call, 'warning', 3000);
+    }
+  }
+}
+
 // now that `airports` and `zones` are defined above, register resize handler
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', ()=>{ setTimeout(resize,120); });
@@ -572,6 +642,8 @@ resize();
 
 function update(dt){
   if(gamePaused) return;
+  updateBurstEffects(dt);
+  enemyAttackFighters(dt);
   // entity behavior
   for(let i=entities.length-1;i>=0;i--){
     const p = entities[i];
@@ -756,6 +828,7 @@ function drawBackgroundScreen(){
 }
 
 function drawRadar(){
+  if(!showRadarZones) return;
   // draw zones (world coordinates assumed)
   // draw zones
   zones.forEach(z=>{
@@ -853,9 +926,27 @@ function drawEntities(){
         ctx.beginPath(); ctx.arc(dx,dy,selectRadius + 3,0,Math.PI*2); ctx.strokeStyle='rgba(45,212,191,0.85)'; ctx.lineWidth=2; ctx.stroke();
       }
     }
-    ctx.fillStyle = p.selected? 'rgba(255,206,102,0.95)' : 'rgba(230,242,255,0.95)'; ctx.font='12px system-ui'; ctx.fillText(p.call, dx+14, dy-6);
-    ctx.fillStyle = 'rgba(230,242,255,0.6)'; ctx.font='11px system-ui'; ctx.fillText(Math.round(p.alt)+' ft', dx+14, dy+8);
+    const typeShort =
+      p.type === 'fighter' ? 'CHASSE' :
+      p.type === 'enemy' ? 'ENNEMI' :
+      p.type === 'tanker' ? 'TANKER' :
+      (p.type === 'cargo' || p.type === 'transport') ? 'CARGO' :
+      'CIVIL';
+    const hdgDeg = Math.round((p.hdg*180/Math.PI+360)%360);
+    const fuelLabel = Number.isFinite(p._fuel) ? ('FUEL ' + Math.round(p._fuel) + '%') : '';
+    const line2 = 'ALT ' + Math.round(p.alt) + ' ft  |  SPD ' + Math.round(p.spd) + ' kt';
+    const line3 = 'HDG ' + hdgDeg + '°  |  ' + typeShort + (fuelLabel ? ('  |  ' + fuelLabel) : '');
+
+    ctx.fillStyle = p.selected? 'rgba(255,206,102,0.95)' : 'rgba(230,242,255,0.95)';
+    ctx.font='12px system-ui';
+    ctx.fillText(p.call, dx+14, dy-8);
+    ctx.fillStyle = 'rgba(230,242,255,0.72)';
+    ctx.font='10px system-ui';
+    ctx.fillText(line2, dx+14, dy+7);
+    ctx.fillStyle = 'rgba(230,242,255,0.58)';
+    ctx.fillText(line3, dx+14, dy+20);
   });
+  drawBurstEffects();
 }
 function loop(now){
   const dt = now - last; last = now;
@@ -1210,6 +1301,12 @@ const _elSendController = document.getElementById('send-controller'); if(_elSend
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
+const _elToggleZones = document.getElementById('toggle-zones'); if(_elToggleZones) _elToggleZones.addEventListener('click', ()=>{
+  showRadarZones = !showRadarZones;
+  _elToggleZones.classList.toggle('active', showRadarZones);
+  info.textContent = showRadarZones ? 'Zones radar: ON' : 'Zones radar: OFF';
+  setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900);
+});
 const _elToggleNotif = document.getElementById('toggle-notifications'); if(_elToggleNotif) _elToggleNotif.addEventListener('click', ()=>{
   notificationsEnabled = !notificationsEnabled;
   _elToggleNotif.classList.toggle('active', notificationsEnabled);
@@ -1244,6 +1341,7 @@ const _zOut = document.getElementById('zoom-out'); if(_zOut) _zOut.addEventListe
 
 // Init radio display
 setRadio(radioFreq);
+if(_elToggleZones) _elToggleZones.classList.toggle('active', showRadarZones);
 updateFuelAlertsPanel();
 setInterval(updateFuelAlertsPanel, 1000);
 
@@ -1251,7 +1349,7 @@ setInterval(updateFuelAlertsPanel, 1000);
 function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
 // Ensure promises are real promises (some browsers may not implement decode)
 const decodes = [
-  imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA320.decode?.().catch(()=>{}), imgB737.decode?.().catch(()=>{}), imgE195.decode?.().catch(()=>{}), imgA321.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{}),
+  imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgRafale.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA320.decode?.().catch(()=>{}), imgB737.decode?.().catch(()=>{}), imgE195.decode?.().catch(()=>{}), imgA321.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{}),
   imgA350.decode?.().catch(()=>{}), imgB787.decode?.().catch(()=>{}), imgB747.decode?.().catch(()=>{}), imgATR72.decode?.().catch(()=>{}), imgC172.decode?.().catch(()=>{})
 ].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
