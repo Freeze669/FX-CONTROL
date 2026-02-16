@@ -577,12 +577,16 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
 
 function spawnAirport(x,y,name,country='Zone Internationale'){ airports.push({x,y,name,country,r:28}); }
 
-// define a set of cities and countries (for background map-like look) - enlarged for bigger map
+// define a set of countries as rounded masses (abstract world map look)
 const countries = [
-  {x: -400, y: -160, w: 720, h: 440, name: 'Pays A', color: 'rgba(20,60,100,0.18)'},
-  {x: 80, y: 120, w: 840, h: 520, name: 'Pays B', color: 'rgba(40,30,70,0.14)'},
-  {x: -680, y: 240, w: 480, h: 320, name: 'Pays C', color: 'rgba(60,40,20,0.08)'},
-  {x: 600, y: -200, w: 600, h: 380, name: 'Pays D', color: 'rgba(30,50,80,0.15)'}
+  {x: -540, y: -180, rx: 320, ry: 190, rot: -0.22, name: 'Nordia', color: 'rgba(22,66,110,0.18)'},
+  {x: -120, y: -110, rx: 260, ry: 160, rot: 0.08, name: 'Ocevar', color: 'rgba(36,52,96,0.16)'},
+  {x: 290, y: -150, rx: 300, ry: 170, rot: -0.14, name: 'Estoria', color: 'rgba(30,72,104,0.17)'},
+  {x: -620, y: 210, rx: 250, ry: 150, rot: 0.16, name: 'Sud-Ouest', color: 'rgba(68,48,30,0.10)'},
+  {x: -180, y: 250, rx: 280, ry: 170, rot: -0.09, name: 'Meridia', color: 'rgba(54,40,82,0.14)'},
+  {x: 280, y: 260, rx: 330, ry: 190, rot: 0.19, name: 'Valoria', color: 'rgba(42,56,92,0.15)'},
+  {x: 760, y: -90, rx: 220, ry: 140, rot: 0.21, name: 'Aurana', color: 'rgba(26,60,90,0.15)'},
+  {x: 760, y: 250, rx: 260, ry: 150, rot: -0.18, name: 'Helios', color: 'rgba(36,68,98,0.13)'}
 ];
 
 // cities computed relative to current canvas center (cx, cy) - more cities for larger map
@@ -921,7 +925,22 @@ function drawBackgroundScreen(){
     ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
     ctx.globalAlpha = 1.0;
   }catch(e){}
-  for(const c of countries){ ctx.fillStyle = c.color; ctx.fillRect(c.x, c.y, c.w, c.h); ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(c.x, c.y, c.w, c.h); ctx.fillStyle = 'rgba(230,242,255,0.04)'; ctx.font='11px system-ui'; ctx.fillText(c.name, c.x+8, c.y+14); }
+  for(const c of countries){
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot || 0);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, c.rx, c.ry, 0, 0, Math.PI*2);
+    ctx.fillStyle = c.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(230,242,255,0.08)';
+    ctx.font='11px system-ui';
+    ctx.fillText(c.name, -c.rx*0.25, -c.ry - 8);
+    ctx.restore();
+  }
   // draw city dots
   for(const c of getCities()){ ctx.beginPath(); ctx.fillStyle='rgba(255,230,180,0.9)'; ctx.arc(c.x, c.y, 5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(230,242,255,0.9)'; ctx.font='12px system-ui'; ctx.fillText(c.name, c.x + 10, c.y + 4); }
   ctx.restore();
@@ -1070,13 +1089,13 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 
-// initial spawning - more variety including transport planes
-for(let i=0;i<8;i++) spawnPlane('civil');
-for(let i=0;i<3;i++) spawnPlane('cargo'); // Add cargo planes
-setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='civil').length<20) spawnPlane('civil'); }, 1300);
-setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='cargo'||e.type==='transport').length<7) spawnPlane('cargo'); }, 3500);
-// reduce enemy spawn frequency and max count to make game less hostile
-setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('enemy'); }, 12000);
+// initial spawning - traffic increased, hostile traffic reduced
+for(let i=0;i<14;i++) spawnPlane('civil');
+for(let i=0;i<5;i++) spawnPlane('cargo');
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='civil').length<32) spawnPlane('civil'); }, 900);
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='cargo'||e.type==='transport').length<10) spawnPlane('cargo'); }, 2400);
+// fewer suspect aircraft
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy').length<1) spawnPlane('enemy'); }, 22000);
 
 // Menu serveur: toujours afficher à l'ouverture, bouton de retour, et pause du jeu
 (function initServerSelection(){
