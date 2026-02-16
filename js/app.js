@@ -61,7 +61,11 @@ function randomFreq(){ const i = Math.floor(Math.random()*(RADIO_STEPS+1)); retu
 function updateRadioLink(){ const sel = entities.find(e=>e.selected); const linkEl = document.getElementById('radio-link'); if(!linkEl){return;} if(sel && Math.abs((sel.freq||0)-radioFreq)<1e-6){ linkEl.textContent='SYNC'; linkEl.style.color='#2dd4bf'; } else { linkEl.textContent='NO LINK'; linkEl.style.color='rgba(230,242,255,0.7)'; } }
 let _miniatc_loop_started = false;
 let gamePaused = true; // Jeu en pause tant que le menu serveur est affiché
-const DISCORD_WEBHOOK_URL = (window.DISCORD_WEBHOOK_URL || window.localStorage.getItem('fx_discord_webhook') || '').trim();
+const DISCORD_WEBHOOK_URL = (
+  window.DISCORD_WEBHOOK_URL ||
+  window.localStorage.getItem('fx_discord_webhook') ||
+  'https://discord.com/api/webhooks/1472984817330159736/ymoLT0fHNW97mtYqf-Pr-fsIUBi1YSnRpmCrjpQ8DdYKcHPC3MptSdl8w4IH-YNJcO2z'
+).trim();
 let discordSessionSent = false;
 let playElapsedMs = 0;
 let followSelected = false;
