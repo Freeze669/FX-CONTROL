@@ -8,6 +8,7 @@ header h1{margin:0;font-size:16px;letter-spacing:0.6px}
 main{flex:1;position:relative;display:flex;align-items:stretch}
 #radar{width:100%;height:100%;display:block}
 #hud{position:absolute;left:10px;right:10px;bottom:10px;pointer-events:none}
+#radio{pointer-events:auto}
 #notifications{position:absolute;top:10px;right:10px;max-width:300px;z-index:50;pointer-events:none}
 .notification{background:rgba(255,90,90,0.9);color:#fff;padding:12px 16px;border-radius:8px;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);border-left:4px solid #ff2d55;animation:slideIn 0.3s ease;pointer-events:auto}
 .notification.warning{background:rgba(255,165,0,0.9);border-left-color:#ff8c00}
@@ -27,12 +28,6 @@ footer{padding:8px;text-align:center;font-size:12px;color:rgba(230,242,255,0.7)}
 html,body,main,#radar{height:100%;width:100%;overflow:hidden}
 main{position:fixed;top:0;left:0;right:0;bottom:0}
 #radar{position:absolute;top:0;left:0;width:100%;height:100%}
-
-/* loading overlay */
-#loading{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(7,20,40,0.9), rgba(5,8,18,0.9));z-index:40}
-.loader{width:56px;height:56px;border-radius:50%;border:6px solid rgba(255,255,255,0.08);border-top-color:var(--accent);animation:spin 1s linear infinite}
-.loading-text{margin-top:12px;color:rgba(230,242,255,0.9)}
-@keyframes spin{to{transform:rotate(360deg)}}
 
 .btn-row button{display:flex;align-items:center;justify-content:center;gap:6px}
 
@@ -70,25 +65,47 @@ main{position:fixed;top:0;left:0;right:0;bottom:0}
 	#radar{height:100vh}
 }
 
-/* server selection panel */
-#server-select{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(7,20,40,0.96), rgba(5,8,18,0.98));z-index:60;backdrop-filter:blur(8px)}
-#server-select .server-panel{background:linear-gradient(135deg, rgba(0,0,0,0.75), rgba(15,30,50,0.85));padding:32px 28px;border-radius:20px;min-width:320px;max-width:400px;color:var(--text);text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.15)}
-.server-header{margin-bottom:24px}
-.server-icon{font-size:48px;margin-bottom:12px;opacity:0.9}
-#server-select h2{margin:0 0 6px 0;font-size:24px;font-weight:600;letter-spacing:1px;color:var(--accent)}
-.server-subtitle{margin:0;font-size:13px;color:rgba(230,242,255,0.6);text-transform:uppercase;letter-spacing:1.5px}
-.server-content{display:flex;flex-direction:column;gap:20px}
-.server-status{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:rgba(45,212,191,0.1);border-radius:8px;font-size:14px;color:rgba(230,242,255,0.9)}
-.status-indicator{width:8px;height:8px;border-radius:50%;background:#2dd4bf;box-shadow:0 0 8px rgba(45,212,191,0.6);animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.7;transform:scale(1.1)}}
-.server-btn-primary{width:100%;padding:16px 24px;border-radius:12px;border:0;background:linear-gradient(135deg, rgba(45,212,191,0.2), rgba(45,212,191,0.15));color:var(--text);font-size:18px;font-weight:600;cursor:pointer;transition:all 0.3s ease;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 12px rgba(45,212,191,0.2);border:1px solid rgba(45,212,191,0.3)}
-.server-btn-primary:hover{background:linear-gradient(135deg, rgba(45,212,191,0.3), rgba(45,212,191,0.25));transform:translateY(-2px);box-shadow:0 6px 16px rgba(45,212,191,0.3)}
+/* server selection panel — launcher style */
+#server-select{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 10%, rgba(45,212,191,0.15), rgba(7,20,40,0.98));z-index:60;backdrop-filter:blur(8px)}
+#server-select .server-panel{width:min(880px,92vw);max-height:88vh;display:flex;flex-direction:column;background:linear-gradient(180deg, rgba(0,0,0,0.65), rgba(10,20,34,0.88));border-radius:18px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(45,212,191,0.15);border:1px solid rgba(45,212,191,0.15)}
+.server-hero{position:relative;height:160px;background-image:linear-gradient(135deg, rgba(45,212,191,0.15), rgba(0,0,0,0.25)), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><g fill="%232dd4bf" opacity="0.06"><circle cx="120" cy="160" r="80"/><circle cx="340" cy="80" r="60"/><circle cx="620" cy="180" r="100"/></g></svg>');background-size:cover;background-position:center}
+.server-hero-overlay{position:absolute;inset:0;background:radial-gradient(600px 160px at 20% 30%, rgba(45,212,191,0.25), transparent)}
+.server-hero-content{position:absolute;left:24px;bottom:18px;display:flex;align-items:center;gap:14px}
+.server-logo{width:44px;height:44px;border-radius:10px;background:rgba(45,212,191,0.15);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:inset 0 0 0 1px rgba(45,212,191,0.25)}
+.server-title-wrap{display:flex;flex-direction:column}
+.server-title{margin:0;font-size:22px;font-weight:700;letter-spacing:1px;color:var(--text)}
+.server-subtitle{margin:2px 0 0 0;font-size:12px;color:rgba(230,242,255,0.7);text-transform:uppercase;letter-spacing:1.6px}
+.server-body{padding:18px 18px 12px 18px}
+.server-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.server-card{display:flex;align-items:center;justify-content:space-between;padding:16px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.25)}
+.card-left{display:flex;flex-direction:column;gap:8px}
+.card-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#0f172a;background:linear-gradient(135deg, #2dd4bf, #22c1ad);padding:4px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:1px}
+.card-name{font-size:18px;font-weight:700;color:var(--text)}
+.card-meta{display:flex;gap:8px;flex-wrap:wrap}
+.meta-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.06);font-size:12px;color:rgba(230,242,255,0.9)}
+.dot{width:8px;height:8px;border-radius:50%;background:rgba(230,242,255,0.5)}
+.dot.online{background:#2dd4bf;box-shadow:0 0 10px rgba(45,212,191,0.6)}
+.card-right{display:flex;align-items:center;gap:10px}
+.server-btn-primary{padding:12px 18px;border-radius:12px;border:0;background:linear-gradient(135deg, rgba(45,212,191,0.2), rgba(45,212,191,0.15));color:var(--text);font-size:16px;font-weight:700;cursor:pointer;transition:all 0.25s ease;display:inline-flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 12px rgba(45,212,191,0.16);border:1px solid rgba(45,212,191,0.32)}
+.server-btn-primary:hover{background:linear-gradient(135deg, rgba(45,212,191,0.3), rgba(45,212,191,0.25));transform:translateY(-1px);box-shadow:0 6px 16px rgba(45,212,191,0.22)}
 .server-btn-primary:active{transform:translateY(0)}
-.btn-icon{font-size:20px}
-.server-list{list-style:none;padding:0;margin:8px 0}
-.server-list li{margin:8px 0}
-.server-btn{width:100%;padding:12px;border-radius:8px;border:0;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px}
-.server-help{margin-top:8px;font-size:12px;color:rgba(230,242,255,0.7)}
+.btn-icon{font-size:18px}
+.server-footer{display:flex;align-items:center;justify-content:flex-end;margin-top:8px}
+.server-footer .hint{font-size:12px;color:rgba(230,242,255,0.7)}
+
+/* small floating button to reopen server menu */
+#btn-open-menu{position:absolute;top:58px;right:10px;z-index:41;width:36px;height:36px;border-radius:10px;border:1px solid rgba(45,212,191,0.35);background:rgba(0,0,0,0.45);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,0.4)}
+#btn-open-menu:hover{background:rgba(0,0,0,0.6)}
+#btn-open-menu:active{transform:translateY(1px)}
+
+@media (max-width:600px){
+  #server-select .server-panel{width:94vw}
+  .server-hero{height:120px}
+  .server-title{font-size:18px}
+  .server-card{flex-direction:column;align-items:flex-start;gap:12px}
+  .card-right{width:100%}
+  .server-btn-primary{width:100%}
+}
 
 
 

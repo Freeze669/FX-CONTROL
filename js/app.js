@@ -9,9 +9,31 @@ window.addEventListener('error', ev=>{ console.error(ev.error||ev.message); try{
 window.addEventListener('unhandledrejection', ev=>{ console.error('UnhandledRejection', ev.reason); try{ if(_statusEl) _statusEl.textContent = 'Erreur promise: '+(ev.reason?.message||String(ev.reason)); }catch(e){} });
 
 // Notification system
-function showNotification(message, type='info', duration=5000){
+let notificationsEnabled = true;
+const notificationHistory = new Map();
+const NOTIF_MIN_GAP_MS = 4000;
+const NOTIF_MAX_VISIBLE = 4;
+function clearNotifications(){
+  const notifEl = document.getElementById('notifications');
+  if(notifEl) notifEl.innerHTML = '';
+  notificationHistory.clear();
+}
+function showNotification(message, type='info', duration=5000, force=false){
+  if(!notificationsEnabled && !force) return;
   const notifEl = document.getElementById('notifications');
   if(!notifEl) return;
+
+  const key = type + '|' + message;
+  const now = Date.now();
+  const last = notificationHistory.get(key) || 0;
+  if(!force && now - last < NOTIF_MIN_GAP_MS) return;
+  notificationHistory.set(key, now);
+
+  const visible = notifEl.querySelectorAll('.notification');
+  if(visible.length >= NOTIF_MAX_VISIBLE && visible[0]){
+    visible[0].remove();
+  }
+
   const notif = document.createElement('div');
   notif.className = 'notification ' + type;
   notif.textContent = message;
@@ -22,10 +44,23 @@ function showNotification(message, type='info', duration=5000){
   }, duration);
 }
 // camera for pan (world coordinates) - declared early so resize() can use it
-const cam = {x:0,y:0,zoom:0.4}; // Larger zoom for bigger map view
+const cam = {x:0,y:0,zoom:0.9}; // Base zoom (user-adjustable)
 let isPanning = false, panLast = null;
 let W, H, cx, cy;
+// Radio system
+let radioFreq = 121.500; // MHz
+const RADIO_BASE = 118.000, RADIO_MAX = 136.975, RADIO_STEP = 0.025;
+const RADIO_STEPS = Math.round((RADIO_MAX - RADIO_BASE)/RADIO_STEP);
+function formatFreq(f){ return f.toFixed(3); }
+function toTicks(f){ return Math.min(RADIO_STEPS, Math.max(0, Math.round((f - RADIO_BASE)/RADIO_STEP))); }
+function fromTicks(t){ return Number((RADIO_BASE + t*RADIO_STEP).toFixed(3)); }
+function setRadioFromTicks(t){ const f = fromTicks(t); radioFreq = f; const el = document.getElementById('radio-freq'); if(el) el.textContent = formatFreq(f); updateRadioLink(); }
+function setRadio(f){ setRadioFromTicks(toTicks(f)); }
+function stepRadio(delta){ setRadioFromTicks(toTicks(radioFreq) + delta); }
+function randomFreq(){ const i = Math.floor(Math.random()*(RADIO_STEPS+1)); return fromTicks(i); }
+function updateRadioLink(){ const sel = entities.find(e=>e.selected); const linkEl = document.getElementById('radio-link'); if(!linkEl){return;} if(sel && Math.abs((sel.freq||0)-radioFreq)<1e-6){ linkEl.textContent='SYNC'; linkEl.style.color='#2dd4bf'; } else { linkEl.textContent='NO LINK'; linkEl.style.color='rgba(230,242,255,0.7)'; } }
 let _miniatc_loop_started = false;
+let gamePaused = true; // Jeu en pause tant que le menu serveur est affiché
 function startMainLoop(){ if(!_miniatc_loop_started){ _miniatc_loop_started = true; try{ setStatus('Démarrage boucle'); hideLoading(); requestAnimationFrame(loop); setStatus(''); }catch(e){ console.error(e); setStatus('Erreur au démarrage: '+(e.message||e)); } } }
 function resize(){
   const dpr = window.devicePixelRatio || 1;
@@ -67,6 +102,13 @@ const svgCargo = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 
 const svgA330 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 45"><path fill="%23ffffff" d="M10 22.5 L28 10 L102 10 L120 22.5 L102 35 L28 35 Z M28 13 L98 13 L116 22.5 L98 32 L28 32 Z M34 16 L39 16 L39 29 L34 29 Z M44 16 L49 16 L49 29 L44 29 Z M54 16 L59 16 L59 29 L54 29 Z M64 16 L69 16 L69 29 L64 29 Z M74 16 L79 16 L79 29 L74 29 Z M84 16 L89 16 L89 29 L84 29 Z"/><circle cx="22" cy="22.5" r="3" fill="%23ffffff"/><circle cx="118" cy="22.5" r="3" fill="%23ffffff"/></svg>');
 const svgB777 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 45"><path fill="%23ffffff" d="M10 22.5 L30 9 L110 9 L130 22.5 L110 36 L30 36 Z M30 12 L108 12 L128 22.5 L108 33 L30 33 Z M36 15 L42 15 L42 30 L36 30 Z M48 15 L54 15 L54 30 L48 30 Z M60 15 L66 15 L66 30 L60 30 Z M72 15 L78 15 L78 30 L72 30 Z M84 15 L90 15 L90 30 L84 30 Z M96 15 L102 15 L102 30 L96 30 Z"/><circle cx="24" cy="22.5" r="3" fill="%23ffffff"/><circle cx="126" cy="22.5" r="3" fill="%23ffffff"/></svg>');
 
+// New aircraft SVGs
+const svgA350 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 46"><path fill="%23ffffff" d="M12 23 L32 10 L120 10 L146 23 L120 36 L32 36 Z M32 12 L116 12 L142 23 L116 34 L32 34 Z M38 15 L44 15 L44 31 L38 31 Z M50 15 L56 15 L56 31 L50 31 Z M62 15 L68 15 L68 31 L62 31 Z M74 15 L80 15 L80 31 L74 31 Z M86 15 L92 15 L92 31 L86 31 Z M98 15 L104 15 L104 31 L98 31 Z"/><circle cx="26" cy="23" r="3" fill="%23ffffff"/><circle cx="150" cy="23" r="3" fill="%23ffffff"/></svg>');
+const svgB787 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 155 44"><path fill="%23ffffff" d="M10 22 L30 10 L116 10 L140 22 L116 34 L30 34 Z M30 12 L112 12 L136 22 L112 32 L30 32 Z M36 14 L42 14 L42 30 L36 30 Z M48 14 L54 14 L54 30 L48 30 Z M60 14 L66 14 L66 30 L60 30 Z M72 14 L78 14 L78 30 L72 30 Z M84 14 L90 14 L90 30 L84 30 Z M96 14 L102 14 L102 30 L96 30 Z"/><circle cx="24" cy="22" r="3" fill="%23ffffff"/><circle cx="144" cy="22" r="3" fill="%23ffffff"/></svg>');
+const svgB747 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 48"><path fill="%23ffffff" d="M12 24 L34 11 L126 11 L152 24 L126 37 L34 37 Z M34 13 L122 13 L148 24 L122 35 L34 35 Z M40 16 L46 16 L46 32 L40 32 Z M52 16 L58 16 L58 32 L52 32 Z M64 16 L70 16 L70 32 L64 32 Z M76 16 L82 16 L82 32 L76 32 Z M88 16 L94 16 L94 32 L88 32 Z M100 16 L106 16 L106 32 L100 32 Z"/><circle cx="28" cy="24" r="3" fill="%23ffffff"/><circle cx="156" cy="24" r="3" fill="%23ffffff"/></svg>');
+const svgATR72 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 38"><path fill="%23ffffff" d="M10 19 L24 12 L80 12 L94 19 L80 26 L24 26 Z M24 14 L78 14 L92 19 L78 24 L24 24 Z"/><rect x="32" y="9" width="4" height="6" fill="%23ffffff"/><rect x="32" y="23" width="4" height="6" fill="%23ffffff"/><rect x="62" y="9" width="4" height="6" fill="%23ffffff"/><rect x="62" y="23" width="4" height="6" fill="%23ffffff"/><circle cx="18" cy="19" r="2" fill="%23ffffff"/><circle cx="98" cy="19" r="2" fill="%23ffffff"/></svg>');
+const svgC172 = svgDataURL('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 30"><path fill="%23ffffff" d="M8 15 L18 10 L56 10 L66 15 L56 20 L18 20 Z M18 12 L54 12 L64 15 L54 18 L18 18 Z"/><rect x="30" y="8" width="20" height="2" fill="%23ffffff"/><rect x="30" y="20" width="20" height="2" fill="%23ffffff"/><circle cx="14" cy="15" r="2" fill="%23ffffff"/><circle cx="70" cy="15" r="2" fill="%23ffffff"/></svg>');
+
 const imgPlane = new Image(); imgPlane.src = svgPlane;
 const imgFighter = new Image(); imgFighter.src = svgFighter;
 const imgEnemy = new Image(); imgEnemy.src = svgEnemy;
@@ -74,6 +116,11 @@ const imgAirport = new Image(); imgAirport.src = svgAirport;
 const imgCargo = new Image(); imgCargo.src = svgCargo;
 const imgA330 = new Image(); imgA330.src = svgA330;
 const imgB777 = new Image(); imgB777.src = svgB777;
+const imgA350 = new Image(); imgA350.src = svgA350;
+const imgB787 = new Image(); imgB787.src = svgB787;
+const imgB747 = new Image(); imgB747.src = svgB747;
+const imgATR72 = new Image(); imgATR72.src = svgATR72;
+const imgC172 = new Image(); imgC172.src = svgC172;
 
 // stylized world map SVG as background (low-detail, abstract continents)
 const svgWorld = svgDataURL(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
@@ -93,7 +140,7 @@ const imgWorldMap = new Image(); imgWorldMap.src = svgWorld;
 
 function spawnPlane(type='civil', x=null, y=null, hdg=null){
   const angle = rand(0,Math.PI*2);
-  const r = Math.max(W,H)/1.2 + 200; // Even larger spawn radius for bigger map
+  const r = Math.max(W,H)*2.8 + 1200; // Much larger spawn radius for bigger world
   const px = x!==null? x : cx + Math.cos(angle)*r;
   const py = y!==null? y : cy + Math.sin(angle)*r;
   const phd = hdg!==null? hdg : ((angle + Math.PI) % (Math.PI*2));
@@ -128,6 +175,20 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.airline = 'Armée de l\'Air';
     base.fuel = Math.round(rand(60, 100)) + '%';
   }
+  else if(type==='tanker'){
+    base.spd = rand(240,300);
+    base.alt = rand(20000,32000);
+    base.targetId = null;
+    base.model = 'KC-135';
+    base.img = svgCargo;
+    base.origin = 'Base de Ravitaillement';
+    base.destination = 'Mission de ravitaillement';
+    base.passengers = 6;
+    base.weight = '40 t';
+    base.airline = 'Escadron Ravitailleur';
+    base._fuel = Math.round(rand(65, 95));
+    base.fuel = Math.round(base._fuel) + '%';
+  }
   else if(type==='enemy'){ 
     base.spd = rand(160,300); 
     base.model = 'Unknown'; 
@@ -157,7 +218,7 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     base.fuel = Math.round(rand(40, 90)) + '%';
   }
   else { // civil passenger
-    const civilModels = ['A320','B737','E195','A321','A330','B777'];
+    const civilModels = ['A320','B737','E195','A321','A330','B777','A350','B787','B747','ATR72','C172'];
     base.model = civilModels[Math.floor(Math.random()*civilModels.length)];
     // pick model-specific SVG
     if(base.model==='A320') base.img = svgA320;
@@ -166,6 +227,11 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     else if(base.model==='A321') base.img = svgA321;
     else if(base.model==='A330') base.img = svgA330;
     else if(base.model==='B777') base.img = svgB777;
+    else if(base.model==='A350') base.img = svgA350;
+    else if(base.model==='B787') base.img = svgB787;
+    else if(base.model==='B747') base.img = svgB747;
+    else if(base.model==='ATR72') base.img = svgATR72;
+    else if(base.model==='C172') base.img = svgC172;
     else base.img = svgPlane;
     
     // Passenger and weight data by model
@@ -175,6 +241,11 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
     else if(base.model==='A321'){ base.passengers = Math.round(rand(180, 240)); base.weight = Math.round(rand(50, 65)) + ' t'; }
     else if(base.model==='A330'){ base.passengers = Math.round(rand(250, 350)); base.weight = Math.round(rand(120, 150)) + ' t'; }
     else if(base.model==='B777'){ base.passengers = Math.round(rand(300, 450)); base.weight = Math.round(rand(150, 200)) + ' t'; }
+    else if(base.model==='A350'){ base.passengers = Math.round(rand(300, 410)); base.weight = Math.round(rand(115, 140)) + ' t'; }
+    else if(base.model==='B787'){ base.passengers = Math.round(rand(240, 360)); base.weight = Math.round(rand(110, 135)) + ' t'; }
+    else if(base.model==='B747'){ base.passengers = Math.round(rand(350, 470)); base.weight = Math.round(rand(180, 230)) + ' t'; }
+    else if(base.model==='ATR72'){ base.passengers = Math.round(rand(60, 78)); base.weight = Math.round(rand(20, 25)) + ' t'; }
+    else if(base.model==='C172'){ base.passengers = Math.round(rand(2, 4)); base.weight = Math.round(rand(0.7, 1.2)) + ' t'; }
     else { base.passengers = Math.round(rand(100, 200)); base.weight = Math.round(rand(30, 60)) + ' t'; }
     
     base.airline = airlines[Math.floor(Math.random()*airlines.length)];
@@ -183,6 +254,8 @@ function spawnPlane(type='civil', x=null, y=null, hdg=null){
   
   // record spawn time to avoid immediate interception on spawn
   base._spawnTime = performance.now();
+  // assign radio frequency (ticks-based exact)
+  base.freq = randomFreq();
   entities.push(base);
 }
 
@@ -218,6 +291,20 @@ function initAirports(){
   spawnAirport(cx - 500, cy + 200, 'FX-CARGO');
   // city airports
   for(const c of getCities()){ spawnAirport(c.x, c.y, 'APT '+c.name.replace(/\s+/g,'')); }
+  // ring airports around the center to enlarge the world
+  const rings = [
+    {r: 700, n: 6, p:'R1-'},
+    {r: 1100, n: 8, p:'R2-'},
+    {r: 1600, n: 10, p:'R3-'}
+  ];
+  for(const ring of rings){
+    for(let i=0;i<ring.n;i++){
+      const a = i*(Math.PI*2/ring.n);
+      const ax = cx + Math.cos(a)*ring.r;
+      const ay = cy + Math.sin(a)*ring.r;
+      spawnAirport(ax, ay, 'FX-'+ring.p+(i+1));
+    }
+  }
 }
 initAirports();
 
@@ -233,6 +320,14 @@ function initZonesAndRoutes(){
   zones.push({x:cx-400, y:cy+200, r:200, name:'TMA CARGO', color:'rgba(255,165,0,0.06)'});
   // add city zones for realism
   for(const c of getCities()){ zones.push({x:c.x, y:c.y, r:120, name: c.name+' CTR', color:'rgba(200,220,255,0.05)'}); }
+  // extra sector rings to cover enlarged world
+  const ringRs = [600, 1000, 1400];
+  for(const rr of ringRs){
+    for(let i=0;i<6;i++){
+      const ang = i*(Math.PI*2/6);
+      zones.push({x:cx+Math.cos(ang)*rr, y:cy+Math.sin(ang)*rr, r:180, name:'SECT '+(i+1)+'-'+rr, color:'rgba(45,212,191,0.05)'});
+    }
+  }
   // Flight routes (airways)
   routes.push([{x:cx-440,y:cy+20},{x:cx-120,y:cy-80},{x:cx+80,y:cy-40},{x:cx+320,y:cy+120}]);
   routes.push([{x:cx-500,y:cy+200},{x:cx-200,y:cy+100},{x:cx+100,y:cy+60},{x:cx+400,y:cy+180}]);
@@ -252,6 +347,7 @@ window.addEventListener('orientationchange', ()=>{ setTimeout(resize,120); });
 resize();
 
 function update(dt){
+  if(gamePaused) return;
   // entity behavior
   for(let i=entities.length-1;i>=0;i--){
     const p = entities[i];
@@ -279,10 +375,80 @@ function update(dt){
         target._beingTracked = true;
         target._trackedBy = p.id;
       }
+    } else if(p.type==='tanker' && p.targetId){
+      const tgt = entities.find(e=>e.id===p.targetId);
+      if(!tgt){ entities.splice(i,1); continue; }
+      // steer gently to target
+      const dx = tgt.x - p.x, dy = tgt.y - p.y; const desired = Math.atan2(dy,dx);
+      let diff = desired - p.hdg; while(diff>Math.PI) diff-=Math.PI*2; while(diff<-Math.PI) diff+=Math.PI*2; p.hdg += diff*0.08;
+      const speed = p.spd*(dt/1000)/2.5; p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
+      const d = Math.hypot(dx,dy);
+      if(d < 30){
+        if(p._mode === 'force'){
+          tgt.returning = true;
+          tgt._forcedByTanker = true;
+          const nearest = findNearestAirport(tgt.x, tgt.y);
+          if(nearest) tgt.destination = nearest.name;
+          tgt.spd = Math.max(120, tgt.spd * 0.75);
+          showNotification('Atterrissage force ordonne: ' + tgt.call, 'warning', 2600);
+        } else {
+          tgt._lowFuel = false;
+          tgt._fuel = Math.min(100, (tgt._fuel||0) + 60);
+          tgt.fuel = Math.round(tgt._fuel) + '%';
+          showNotification('Ravitaillement effectue: '+tgt.call, 'info', 2500);
+        }
+        tgt._tankerAssigned = false;
+        entities.splice(i,1);
+      }
     } else {
+      // fuel emergency handling (low fuel + consumption)
+      if(p.type!=='fighter' && p.type!=='enemy' && p.type!=='tanker'){
+        if(p._fuel==null){
+          if(Math.random()<0.16){ p._lowFuel = true; p._fuel = Math.round(rand(5,12)); p._fuelWarned=false; p._tankerAssigned=false; }
+          else { p._lowFuel = false; p._fuel = Math.round(rand(40,95)); }
+        }
+        const burn = (p.spd/400) * (dt/1000) * (p._lowFuel? 1.4 : 0.28);
+        p._fuel = Math.max(0, p._fuel - burn);
+        p.fuel = Math.round(p._fuel) + '%';
+        if(p._fuel <= 0){
+          showNotification('Perte avion: carburant a 0% ('+p.call+')', 'warning', 2600);
+          if(p.selected) selectEntity(null);
+          entities.splice(i,1);
+          continue;
+        }
+        if(p._lowFuel){
+          if(!p._fuelWarned && p._fuel < 8){ p._fuelWarned=true; showNotification('URGENT: '+p.call+' carburant faible ('+Math.round(p._fuel)+'%)', 'warning', 3500); }
+          if(p._fuel <= 2 && !p._tankerAssigned){
+            if(p.spd > 140){
+              p._crashed = true; p._crashTime = performance.now(); p._crashReason='Panne sèche';
+              showNotification('💥 CRASH (panne sèche): '+p.call, 'warning', 5000);
+              setTimeout(()=>{ const idx = entities.indexOf(p); if(idx>=0) entities.splice(idx,1); }, 2500);
+            } else {
+              p.spd = Math.max(60, p.spd*0.96);
+            }
+          }
+        }
+      }
+      if(p._forcedByTanker && p.returning){
+        const nowMs = performance.now();
+        if(!p._lastForceReminder || (nowMs - p._lastForceReminder) > 10000){
+          showNotification('RETOUR FORCE: ' + p.call + ' -> ' + (p.destination || 'Base'), 'warning', 4200);
+          p._lastForceReminder = nowMs;
+        }
+      }
+      // random small heading/speed variations for civil traffic
+      if((p.type==='civil' || p.type==='cargo' || p.type==='transport') && !p.returning){
+        p._mvTimer = (p._mvTimer==null)? rand(2500,7000) : (p._mvTimer - dt);
+        if(p._mvTimer<=0){
+          const delta = (Math.random()*30 - 15) * Math.PI/180;
+          p.hdg += delta;
+          if(Math.random()<0.5){ p.spd = Math.max(60, Math.min(260, p.spd + (Math.random()*40 - 20))); }
+          p._mvTimer = rand(2500,7000);
+        }
+      }
       // normal movement for civil/enemy
       // if returning to airport, steer to nearest airport
-      if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
+      if(p.returning){ let nearest=null; let dmin=Infinity; for(let a of airports){ const d=Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){dmin=d;nearest=a;} } if(nearest){ p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); if(dmin<18){ if(p._forcedByTanker){ showNotification('Atterrissage force confirme: '+p.call, 'info', 2300); if(p.selected) selectEntity(null); entities.splice(i,1); continue; } p.returning=false; p.spd = Math.max(60, p.spd*0.8); } } }
       const speed = (p.spd*(dt/1000)/2.5) || 0;
       p.x += Math.cos(p.hdg)*speed; p.y += Math.sin(p.hdg)*speed;
       
@@ -320,7 +486,22 @@ function update(dt){
       }
       
       // Larger bounds for bigger map
-      if(p.x<-2000||p.x>W+2000||p.y<-2000||p.y>H+2000){ entities.splice(i,1); }
+      if(p.x<-6000||p.x>W+6000||p.y<-6000||p.y>H+6000){ entities.splice(i,1); }
+    }
+  }
+  const selected = entities.find(e => e.selected);
+  if(selected){
+    const fuelText = Number.isFinite(selected._fuel) ? (Math.round(selected._fuel) + '%') : (selected.fuel || '—');
+    const fuelEl = document.getElementById('info-fuel');
+    if(fuelEl) fuelEl.innerHTML = '<strong>Carburant:</strong> ' + fuelText;
+    const statusEl = document.getElementById('info-status');
+    if(statusEl){
+      let status = 'En vol';
+      if(selected.returning) status = 'Retour à l\'aéroport';
+      if(selected.type === 'tanker' && selected.targetId) status = selected._mode === 'force' ? 'Mission interception' : 'Mission ravitaillement';
+      if(selected._forcedByTanker) status = 'Atterrissage force';
+      if(selected._alerted) status = 'Alerte';
+      statusEl.innerHTML = '<strong>Statut:</strong> ' + status;
     }
   }
 }
@@ -334,7 +515,7 @@ function drawBackgroundScreen(){
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   // draw world map image behind everything (if loaded) - larger for bigger view
   try{
-    const mapW = Math.max(W,H) * 3.5; const mapH = mapW * 0.5;
+    const mapW = Math.max(W,H) * 5.5; const mapH = mapW * 0.5;
     ctx.globalAlpha = 0.9;
     ctx.drawImage(imgWorldMap, cx - mapW/2, cy - mapH/2, mapW, mapH);
     ctx.globalAlpha = 1.0;
@@ -400,7 +581,7 @@ function drawEntities(){
   entities.forEach(p=>{
     const dx = p.x, dy = p.y;
     // draw trajectory
-    if(showTrajectory && p.history && p.history.length>1){ ctx.beginPath(); ctx.moveTo(p.history[0].x,p.history[0].y); for(let i=1;i<p.history.length;i++){ ctx.lineTo(p.history[i].x,p.history[i].y); } ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.stroke(); }
+    if(showTrajectory && p.history && p.history.length>1){ ctx.beginPath(); ctx.moveTo(p.history[0].x,p.history[0].y); for(let i=1;i<p.history.length;i++){ ctx.lineTo(p.history[i].x,p.history[i].y); } ctx.strokeStyle=p.selected?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.06)'; ctx.lineWidth=p.selected?1.8:1; ctx.stroke(); }
     
     // Draw crash indicator
     if(p._crashed){
@@ -417,6 +598,22 @@ function drawEntities(){
     if(p.selected){ // halo
       ctx.beginPath(); ctx.arc(dx,dy,26,0,Math.PI*2); ctx.strokeStyle='rgba(255,206,102,0.25)'; ctx.lineWidth=3; ctx.stroke();
     }
+    if(Number.isFinite(p._fuel) && p._fuel <= 10){
+      const pulse = 20 + Math.sin(performance.now()/180)*4;
+      ctx.beginPath(); ctx.arc(dx,dy,pulse,0,Math.PI*2);
+      ctx.strokeStyle = p._fuel <= 4 ? 'rgba(255,0,0,0.85)' : 'rgba(255,165,0,0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,220,120,0.95)';
+      ctx.font='10px system-ui';
+      ctx.fillText('FUEL ' + Math.round(p._fuel) + '%', dx-20, dy-22);
+    }
+    if(p._forcedByTanker){
+      ctx.beginPath(); ctx.arc(dx,dy,30,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,90,90,0.9)'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='rgba(255,150,150,0.95)'; ctx.font='10px system-ui';
+      ctx.fillText('FORCE RTB', dx-24, dy-30);
+    }
     if(p.type==='enemy'){
       ctx.drawImage(imgEnemy, dx-10, dy-10, 20,20);
       // Draw alert indicator if alerted
@@ -426,6 +623,9 @@ function drawEntities(){
       }
     } else if(p.type==='fighter'){
       ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgFighter, -10, -10, 20,20); ctx.restore();
+    } else if(p.type==='tanker'){
+      ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg); ctx.drawImage(imgCargo, -12, -12, 24,24); ctx.restore();
+      ctx.beginPath(); ctx.arc(dx,dy,18,0,Math.PI*2); ctx.strokeStyle='rgba(45,212,191,0.85)'; ctx.lineWidth=2; ctx.stroke();
     } else if(p.type==='cargo' || p.type==='transport'){
       ctx.save(); ctx.translate(dx,dy); ctx.rotate(p.hdg);
       // Use preloaded image or create one
@@ -446,7 +646,12 @@ function loop(now){
   update(dt);
   
   drawBackgroundScreen();
-  ctx.save(); ctx.translate(-cam.x, -cam.y);
+  ctx.save();
+  // apply camera transform with zoom centered at screen center
+  ctx.translate(-cam.x, -cam.y);
+  ctx.translate(cx, cy);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cx, -cy);
   drawRadar();
   drawEntities();
   ctx.restore();
@@ -454,15 +659,42 @@ function loop(now){
 }
 
 // initial spawning - more variety including transport planes
-for(let i=0;i<4;i++) spawnPlane('civil');
-for(let i=0;i<2;i++) spawnPlane('cargo'); // Add cargo planes
-setInterval(()=>{ if(entities.filter(e=>e.type==='civil').length<10) spawnPlane('civil'); }, 2000);
-setInterval(()=>{ if(entities.filter(e=>e.type==='cargo'||e.type==='transport').length<4) spawnPlane('cargo'); }, 4000);
+for(let i=0;i<8;i++) spawnPlane('civil');
+for(let i=0;i<3;i++) spawnPlane('cargo'); // Add cargo planes
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='civil').length<20) spawnPlane('civil'); }, 1300);
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='cargo'||e.type==='transport').length<7) spawnPlane('cargo'); }, 3500);
 // reduce enemy spawn frequency and max count to make game less hostile
-setInterval(()=>{ if(entities.filter(e=>e.type==='enemy').length<2) spawnPlane('enemy'); }, 15000);
+setInterval(()=>{ if(gamePaused) return; if(entities.filter(e=>e.type==='enemy').length<3) spawnPlane('enemy'); }, 12000);
 
-// Start the main loop automatically
-startMainLoop();
+// Menu serveur: toujours afficher à l'ouverture, bouton de retour, et pause du jeu
+(function initServerSelection(){
+  const panel = document.getElementById('server-select');
+  const btnLocal = document.getElementById('server-local-btn');
+  const openBtn = document.getElementById('btn-open-menu');
+
+  function openMenu(){
+    if(panel) panel.style.display='flex';
+    gamePaused = true;
+    showNotification('Menu serveur ouvert', 'info', 1500);
+  }
+  function chooseLocal(){
+    gamePaused = false;
+    if(panel) panel.style.display='none';
+    if(!_miniatc_loop_started) startMainLoop();
+    showNotification('Connexion: Local', 'info', 1200);
+  }
+
+  if(btnLocal) btnLocal.addEventListener('click', chooseLocal);
+  if(openBtn) openBtn.addEventListener('click', openMenu);
+
+  // À chaque chargement, afficher le menu si disponible; sinon démarrer directement
+  if(panel) {
+    panel.style.display='flex';
+  } else {
+    gamePaused = false;
+    startMainLoop();
+  }
+})();
 
 // UI and interaction
 const info = document.getElementById('info');
@@ -480,11 +712,14 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
       let typeLabel = 'Commercial';
       if(p.type === 'cargo' || p.type === 'transport') typeLabel = 'Cargo/Transport';
       else if(p.type === 'fighter') typeLabel = 'Avion de Chasse';
+      else if(p.type === 'tanker') typeLabel = 'Avion Ravitailleur';
       else if(p.type === 'enemy') typeLabel = 'Avion Suspect';
       
       // Get status
       let status = 'En vol';
       if(p.returning) status = 'Retour à l\'aéroport';
+      if(p.type === 'tanker' && p.targetId) status = p._mode === 'force' ? 'Mission interception' : 'Mission ravitaillement';
+      if(p._forcedByTanker) status = 'Atterrissage force';
       if(p._alerted) status = '⚠️ Alerté';
       if(p._beingTracked) status = '🛡️ Suivi par chasseur';
       
@@ -500,22 +735,39 @@ function selectEntity(p){ entities.forEach(x=>x.selected=false);
       const passEl = document.getElementById('info-passengers'); if(passEl) passEl.innerHTML = '<strong>Passagers:</strong> ' + (p.passengers !== undefined ? p.passengers : '—');
       const weightEl = document.getElementById('info-weight'); if(weightEl) weightEl.innerHTML = '<strong>Poids:</strong> ' + (p.weight || '—');
       const airlineEl = document.getElementById('info-airline'); if(airlineEl) airlineEl.innerHTML = '<strong>Compagnie:</strong> ' + (p.airline || '—');
-      const fuelEl = document.getElementById('info-fuel'); if(fuelEl) fuelEl.innerHTML = '<strong>Carburant:</strong> ' + (p.fuel || '—');
+      const fuelText = Number.isFinite(p._fuel) ? (Math.round(p._fuel) + '%') : (p.fuel || '—');
+      const fuelEl = document.getElementById('info-fuel'); if(fuelEl) fuelEl.innerHTML = '<strong>Carburant:</strong> ' + fuelText;
+      const rEl = document.getElementById('info-radio'); if(rEl) rEl.innerHTML = '<strong>Fréquence:</strong> ' + (p.freq ? p.freq.toFixed(3) + ' MHz' : '—');
     }catch(e){}
+    const refuelBtn = document.getElementById('refuel');
+    if(refuelBtn) refuelBtn.classList.toggle('hidden', p.type === 'tanker');
+    updateRadioLink();
     info.textContent = ''
   } else { 
     controls.classList.add('hidden'); 
     const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden');
+    const refuelBtn = document.getElementById('refuel'); if(refuelBtn) refuelBtn.classList.add('hidden');
     info.textContent = 'Tapez un avion pour le sélectionner' 
+    updateRadioLink();
   } }
 
-function findEntityAt(x,y){ // x,y are screen coords; convert to world
-  const wx = x + cam.x, wy = y + cam.y;
+function findEntityAt(x,y){ // x,y are screen coords; convert to world (with zoom)
+  const wx = cx + (x + cam.x - cx) / cam.zoom, wy = cy + (y + cam.y - cy) / cam.zoom;
   for(let i=entities.length-1;i>=0;i--){ const p=entities[i]; const dx=p.x-wx, dy=p.y-wy; if(Math.hypot(dx,dy)<30) return p; }
   // airports
   for(let a of airports){ if(Math.hypot(a.x-wx,a.y-wy) < a.r) return {airport:a}; }
   return null;
 }
+
+// Zoom with mouse wheel
+canvas.addEventListener('wheel', e=>{
+  const delta = Math.sign(e.deltaY);
+  const prev = cam.zoom;
+  cam.zoom = Math.min(1.6, Math.max(0.6, cam.zoom + (delta>0?-0.08:0.08)));
+  const k = cam.zoom/prev;
+  cam.x = cx - (cx - cam.x) * k;
+  cam.y = cy - (cy - cam.y) * k;
+});
 
 canvas.addEventListener('click', e=>{
   const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top;
@@ -536,9 +788,108 @@ canvas.addEventListener('click', e=>{
   if(!item){ const panel = document.getElementById('selected-info'); if(panel) panel.classList.add('hidden'); }
 });
 
+function sameFrequency(p){ return p && Math.abs((p.freq||0)-radioFreq)<1e-6; }
+function orderRefusalChance(p){
+  if(!p) return 0;
+  if(p.type === 'enemy') return 0.45;
+  if(p.type === 'fighter') return 0.08;
+  if(p.type === 'tanker') return 0.15;
+  return 0.22;
+}
+function orderRejected(p, orderLabel){
+  if(!p) return false;
+  const chance = orderRefusalChance(p);
+  if(Math.random() >= chance) return false;
+  showNotification((p.call || 'Avion') + ' refuse ordre: ' + orderLabel, 'warning', 2200);
+  return true;
+}
+function findNearestAirport(x, y){
+  let nearest = null;
+  let dmin = Infinity;
+  for(const a of airports){
+    const d = Math.hypot(a.x - x, a.y - y);
+    if(d < dmin){ dmin = d; nearest = a; }
+  }
+  return nearest;
+}
+function dispatchTankerTo(target, source='Commande', mode='force'){
+  if(!target) return false;
+  if(target.type === 'tanker'){
+    info.textContent = 'Impossible: deja un tanker';
+    setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200);
+    return false;
+  }
+  if(target._tankerAssigned){
+    showNotification('Tanker deja assigne a ' + target.call, 'warning', 1700);
+    return false;
+  }
+
+  const nearest = findNearestAirport(target.x, target.y);
+  if(!nearest){
+    showNotification('Aeroport introuvable pour tanker', 'warning', 1800);
+    return false;
+  }
+
+  spawnPlane('tanker', nearest.x+6, nearest.y, Math.atan2(target.y-nearest.y, target.x-nearest.x));
+  const tanker = entities[entities.length-1];
+  if(!tanker) return false;
+
+  tanker.call = 'TK' + Math.floor(rand(100, 999));
+  tanker.targetId = target.id;
+  tanker.spd = Math.max(260, tanker.spd);
+  tanker.alt = Math.max(18000, Number(target.alt) || 0);
+  tanker.destination = mode === 'refuel' ? ('Ravitaillement de ' + target.call) : ('Interception de ' + target.call);
+  tanker._mode = mode;
+  target._tankerAssigned = true;
+  if(!Number.isFinite(target._fuel)) target._fuel = 40;
+  target._lowFuel = target._fuel <= 12;
+
+  if(mode === 'refuel'){
+    showNotification('Avion refuel envoye vers ' + target.call, 'info', 2200);
+  } else {
+    showNotification('Tanker envoye pour forcer atterrissage: ' + target.call, 'warning', 2500);
+  }
+  info.textContent = source + ': tanker lance depuis ' + nearest.name;
+  setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1400);
+  return true;
+}
+function updateFuelAlertsPanel(){
+  const panel = document.getElementById('fuel-alerts');
+  const list = document.getElementById('fuel-alerts-list');
+  const countEl = document.getElementById('fuel-count');
+  if(!list || !countEl) return;
+
+  const alerts = entities
+    .filter(e => e.type !== 'tanker' && Number.isFinite(e._fuel) && e._fuel > 0 && e._fuel <= 25)
+    .sort((a,b) => a._fuel - b._fuel);
+
+  countEl.textContent = String(alerts.length);
+  list.innerHTML = '';
+
+  if(alerts.length === 0){
+    if(panel && !panel.classList.contains('hidden')){
+      const empty = document.createElement('div');
+      empty.className = 'fuel-alert-item';
+      empty.textContent = 'Aucune alerte carburant';
+      list.appendChild(empty);
+    }
+    return;
+  }
+
+  alerts.slice(0, 12).forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'fuel-alert-item';
+    const escortTag = a._tankerAssigned ? ' [TANKER EN ROUTE]' : '';
+    row.textContent = a.call + ' - ' + Math.round(a._fuel) + '%' + escortTag;
+    list.appendChild(row);
+  });
+}
+
 function commandTurn(deltaDeg){ 
   const p = entities.find(x=>x.selected); 
   if(!p) return; 
+  if(!sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; }
+  if(orderRejected(p, 'cap')) return;
   p.hdg += (deltaDeg*Math.PI/180);
   // If manually controlled, update immediately
   if(p._manuallyControlled){
@@ -548,6 +899,8 @@ function commandTurn(deltaDeg){
 function commandSpeed(dv){ 
   const p = entities.find(x=>x.selected); 
   if(!p) return; 
+  if(!sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; }
+  if(orderRejected(p, 'vitesse')) return;
   p.spd = Math.max(40, p.spd + dv);
   // If manually controlled, update immediately
   if(p._manuallyControlled){
@@ -557,6 +910,8 @@ function commandSpeed(dv){
 function commandAlt(dA){ 
   const p = entities.find(x=>x.selected); 
   if(!p) return; 
+  if(!sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; }
+  if(orderRejected(p, 'altitude')) return;
   p.alt = Math.max(0, p.alt + dA); 
   selectedDiv.textContent = p.call + ' • ' + Math.round(p.alt)+' ft • '+Math.round(p.spd)+' kt';
   // If manually controlled, update immediately
@@ -575,6 +930,7 @@ const _elDesc = document.getElementById('desc'); if(_elDesc) _elDesc.addEventLis
 // Controls wired to static buttons in the HTML
 const _elDestroy = document.getElementById('destroy'); if(_elDestroy) _elDestroy.addEventListener('click', ()=>{
   const p = entities.find(x=>x.selected); if(!p) return;
+  if(p.type!=='fighter' && !sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; }
   // Only allow destruction if a fighter has been dispatched to target this plane
   if(p.type !== 'fighter'){
     const fighter = entities.find(e=>e.type==='fighter' && e.targetId===p.id);
@@ -591,13 +947,25 @@ const _elDestroy = document.getElementById('destroy'); if(_elDestroy) _elDestroy
 
 const _elAlert = document.getElementById('alert'); if(_elAlert) _elAlert.addEventListener('click', ()=>{
   const p = entities.find(x=>x.selected); if(!p) return; // command to return to nearest airport
+  if(!sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; }
+  if(orderRejected(p, 'retour base')) return;
   let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
   if(nearest){ p.returning = true; p.hdg = Math.atan2(nearest.y-p.y, nearest.x-p.x); p.spd = Math.max(60, p.spd*0.8); info.textContent='Ordre: revenir à '+nearest.name; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1200); }
 });
 
 const _elDispatch = document.getElementById('dispatch'); if(_elDispatch) _elDispatch.addEventListener('click', ()=>{
-  const p = entities.find(x=>x.selected); if(!p) return; let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
+  const p = entities.find(x=>x.selected); if(!p) return; if(!sameFrequency(p)){ showNotification('Radio: mauvaise fréquence', 'warning', 1500); updateRadioLink(); return; } let nearest = null; let dmin = Infinity; for(let a of airports){ const d = Math.hypot(a.x-p.x,a.y-p.y); if(d<dmin){ dmin=d; nearest=a; } }
   if(nearest){ spawnPlane('fighter', nearest.x+6, nearest.y, Math.atan2(p.y-nearest.y,p.x-nearest.x)); const f = entities[entities.length-1]; f.targetId = p.id; f._mode='escort'; info.textContent='Fighter lancé depuis '+nearest.name; showNotification('Fighter envoyé pour escorter ' + p.call, 'info', 3000); setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',1500); }
+});
+const _elSendTanker = document.getElementById('send-tanker'); if(_elSendTanker) _elSendTanker.addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected);
+  if(!p) return;
+  dispatchTankerTo(p, 'Commande', 'force');
+});
+const _elRefuel = document.getElementById('refuel'); if(_elRefuel) _elRefuel.addEventListener('click', ()=>{
+  const p = entities.find(x=>x.selected);
+  if(!p) return;
+  dispatchTankerTo(p, 'Refuel', 'refuel');
 });
 
 // Send controller to alert suspect aircraft
@@ -622,11 +990,50 @@ const _elSendController = document.getElementById('send-controller'); if(_elSend
 });
 
 const _elTraj = document.getElementById('traj'); if(_elTraj) _elTraj.addEventListener('click', ()=>{ showTrajectory = !showTrajectory; info.textContent = showTrajectory? 'Trajectoires: ON' : 'Trajectoires: OFF'; setTimeout(()=>info.textContent='Tapez un avion pour le sélectionner',900); });
+const _elToggleNotif = document.getElementById('toggle-notifications'); if(_elToggleNotif) _elToggleNotif.addEventListener('click', ()=>{
+  notificationsEnabled = !notificationsEnabled;
+  _elToggleNotif.classList.toggle('active', notificationsEnabled);
+  const icon = _elToggleNotif.querySelector('.notif-icon');
+  if(icon) icon.textContent = notificationsEnabled ? '🔔' : '🔕';
+  if(!notificationsEnabled){
+    clearNotifications();
+  } else {
+    showNotification('Notifications activees', 'info', 1200, true);
+  }
+});
+const _elClearNotif = document.getElementById('clear-notifications'); if(_elClearNotif) _elClearNotif.addEventListener('click', ()=> clearNotifications());
+const _elToggleFuelAlerts = document.getElementById('toggle-fuel-alerts'); if(_elToggleFuelAlerts) _elToggleFuelAlerts.addEventListener('click', ()=>{
+  const panel = document.getElementById('fuel-alerts');
+  if(!panel) return;
+  panel.classList.toggle('hidden');
+  updateFuelAlertsPanel();
+});
+const _elCloseFuelAlerts = document.getElementById('close-fuel-alerts'); if(_elCloseFuelAlerts) _elCloseFuelAlerts.addEventListener('click', ()=>{
+  const panel = document.getElementById('fuel-alerts');
+  if(panel) panel.classList.add('hidden');
+});
+
+// Radio UI buttons
+const _rDec = document.getElementById('radio-dec'); if(_rDec) _rDec.addEventListener('click', ()=> { stepRadio(-1); showNotification('Radio: '+formatFreq(radioFreq)+' MHz', 'info', 800); });
+const _rInc = document.getElementById('radio-inc'); if(_rInc) _rInc.addEventListener('click', ()=> { stepRadio(1); showNotification('Radio: '+formatFreq(radioFreq)+' MHz', 'info', 800); });
+const _rSync = document.getElementById('radio-sync'); if(_rSync) _rSync.addEventListener('click', ()=>{ const p = entities.find(x=>x.selected); if(p){ setRadio(p.freq||radioFreq); showNotification('Radio réglée sur '+formatFreq(radioFreq)+' MHz', 'info', 1200); } else { showNotification('Aucun avion sélectionné', 'warning', 1200); } });
+
+// Zoom buttons
+const _zIn = document.getElementById('zoom-in'); if(_zIn) _zIn.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.min(1.6, cam.zoom + 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
+const _zOut = document.getElementById('zoom-out'); if(_zOut) _zOut.addEventListener('click', ()=>{ const prev = cam.zoom; cam.zoom = Math.max(0.6, cam.zoom - 0.08); const k = cam.zoom/prev; cam.x = cx - (cx - cam.x) * k; cam.y = cy - (cy - cam.y) * k; showNotification('Zoom: '+cam.zoom.toFixed(2), 'info', 800); });
+
+// Init radio display
+setRadio(radioFreq);
+updateFuelAlertsPanel();
+setInterval(updateFuelAlertsPanel, 1000);
 
 // loading overlay: hide after small delay when images ready
 function hideLoading(){ const L = document.getElementById('loading'); if(L){ try{ L.style.display='none'; }catch(e){} } }
 // Ensure promises are real promises (some browsers may not implement decode)
-const decodes = [imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{})].map(p=> p instanceof Promise ? p : Promise.resolve());
+const decodes = [
+  imgPlane.decode?.().catch(()=>{}), imgFighter.decode?.().catch(()=>{}), imgEnemy.decode?.().catch(()=>{}), imgAirport.decode?.().catch(()=>{}), imgCargo.decode?.().catch(()=>{}), imgA330.decode?.().catch(()=>{}), imgB777.decode?.().catch(()=>{}),
+  imgA350.decode?.().catch(()=>{}), imgB787.decode?.().catch(()=>{}), imgB747.decode?.().catch(()=>{}), imgATR72.decode?.().catch(()=>{}), imgC172.decode?.().catch(()=>{})
+].map(p=> p instanceof Promise ? p : Promise.resolve());
 Promise.all(decodes).finally(()=>{
   // hide raw loading
   setTimeout(()=>{
